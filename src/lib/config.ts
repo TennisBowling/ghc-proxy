@@ -25,7 +25,6 @@ const configFileSchema = z.object({
   }).optional(),
   smallModel: z.string().optional(),
   compactUseSmallModel: z.boolean().optional(),
-  warmupUseSmallModel: z.boolean().optional(),
   useFunctionApplyPatch: z.boolean().optional(),
   responsesApiContextManagementModels: z.array(z.string()).optional(),
   modelReasoningEfforts: z.record(z.string(), reasoningEffortSchema).optional(),
@@ -41,7 +40,6 @@ let cachedConfig: ConfigFile = {}
 const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'high'
 const DEFAULT_USE_FUNCTION_APPLY_PATCH = true
 const DEFAULT_COMPACT_USE_SMALL_MODEL = false
-const DEFAULT_WARMUP_USE_SMALL_MODEL = false
 const DEFAULT_CONTEXT_UPGRADE = true
 
 export async function readConfig(): Promise<ConfigFile> {
@@ -111,10 +109,6 @@ export function getSmallModel(): string | undefined {
 
 export function shouldCompactUseSmallModel(): boolean {
   return cachedConfig.compactUseSmallModel ?? DEFAULT_COMPACT_USE_SMALL_MODEL
-}
-
-export function shouldWarmupUseSmallModel(): boolean {
-  return cachedConfig.warmupUseSmallModel ?? DEFAULT_WARMUP_USE_SMALL_MODEL
 }
 
 export function shouldUseFunctionApplyPatch(): boolean {

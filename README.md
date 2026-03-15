@@ -261,15 +261,12 @@ Or in the proxy's **config file** (`~/.local/share/ghc-proxy/config.json`):
 
 - `smallModel`: the model to reroute to
 - `compactUseSmallModel`: reroute recognized compact/summarization requests
-- `warmupUseSmallModel`: reroute explicitly marked warmup/probe requests
 
-Both switches default to `false`. Routing is conservative:
+The switch defaults to `false`. Routing is conservative:
 
 - the target `smallModel` must exist in Copilot's model list
 - it must preserve the original model's declared endpoint support
 - tool, thinking, and vision requests are not rerouted to a model that lacks the required capabilities
-
-Warmup routing is intentionally narrow. Requests must look like explicit warmup/probe traffic; ordinary tool-free chat requests are not rerouted just because they include `anthropic-beta`.
 
 ### Responses Compatibility
 
@@ -300,7 +297,6 @@ Example `config.json`:
 {
   "smallModel": "gpt-4.1-mini",
   "compactUseSmallModel": true,
-  "warmupUseSmallModel": false,
   "useFunctionApplyPatch": true,
   "responsesApiContextManagementModels": ["gpt-5", "gpt-5-mini"],
   "modelReasoningEfforts": {

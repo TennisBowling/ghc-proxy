@@ -25,7 +25,7 @@ LiteLLM **does not provide** an Anthropic-format output interface at all. For cl
 - Per-model endpoint detection (`/v1/messages` vs `/responses`)
 - Per-model vision, tool call, and thinking capability detection
 - Automatic fallback to available execution strategies
-- Small model routing (compact/warmup requests auto-routed to Haiku)
+- Small model routing (compact requests auto-routed to Haiku)
 
 LiteLLM's model routing relies on global configuration with no per-model automatic discovery.
 

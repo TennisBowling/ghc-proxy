@@ -606,7 +606,7 @@ describe('responses and routing', () => {
     expect(calls[0]?.payload.output_config).toBeUndefined()
   })
 
-  test('compact and warmup routing can move /v1/messages to configured small model', async () => {
+  test('compact routing can move /v1/messages to configured small model', async () => {
     const app = createApp()
     const chatCalls: Array<CapturedChatCall> = []
     state.cache.models = buildModelsResponse(
@@ -617,7 +617,6 @@ describe('responses and routing', () => {
     const config = getCachedConfig()
     config.smallModel = 'gpt-4.1-mini'
     config.compactUseSmallModel = true
-    config.warmupUseSmallModel = true
 
     CopilotClient.prototype.createChatCompletions = mockChatCompletions({
       id: 'chat_1',
@@ -644,12 +643,12 @@ describe('responses and routing', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'anthropic-beta': 'claude-code-warmup',
       },
       body: JSON.stringify({
         model: 'claude-opus-4.6',
-        max_tokens: 32,
-        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1024,
+        system: 'You are a helpful AI assistant tasked with summarizing conversations for context.',
+        messages: [{ role: 'user', content: 'Summarize the conversation so far.' }],
       }),
     }))
 

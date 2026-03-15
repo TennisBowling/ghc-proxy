@@ -38,7 +38,6 @@ export async function handleMessagesCore(
   const anthropicBetaHeader = headers.get('anthropic-beta') ?? undefined
   const modelRouting = applyMessagesModelPolicy(
     anthropicPayload,
-    anthropicBetaHeader,
   )
   const modelMapping: ModelMappingInfo = {
     originalModel: modelRouting.originalModel,

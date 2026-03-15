@@ -145,7 +145,7 @@ ConversationRequest
 | `state.ts`                  | Global AppState (auth, config, cache, rate limit)    |
 | `model-resolver.ts`         | Model ID resolution with configurable fallbacks      |
 | `model-capabilities.ts`     | Query model endpoint support and capabilities        |
-| `request-model-policy.ts`   | Smart model rerouting (compact/warmup detection)     |
+| `request-model-policy.ts`   | Smart model rerouting (compact detection)             |
 | `api-config.ts`             | Copilot base URL, headers, request ID generation     |
 | `validation.ts`             | Zod schemas for all request/response types           |
 | `error.ts`                  | HTTPError class, error forwarding, validation errors |
