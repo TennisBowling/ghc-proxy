@@ -72,16 +72,6 @@ Disabled by default. Requires `smallModel` to be set in config.
 
 Identifies Claude Code's conversation summarization requests by matching the system prompt pattern. When detected and `compactUseSmallModel` is enabled, the request is rerouted.
 
-### Warmup Detection
-
-Identifies probe/warmup requests. All conditions must be true:
-- `anthropic-beta` header contains a warmup marker
-- No tools in the request
-- No system prompt
-- No explicit thinking configuration
-- Small `max_tokens` value
-- Single short user text message
-
 ### Safety Checks
 
 Before rerouting, the proxy validates the target small model:

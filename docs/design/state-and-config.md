@@ -78,7 +78,6 @@ interface ConfigFile {
   // Small model routing
   smallModel?: string // Target model for rerouting
   compactUseSmallModel?: boolean // Reroute compact/summarize requests
-  warmupUseSmallModel?: boolean // Reroute warmup/probe requests
 
   // Responses API
   useFunctionApplyPatch?: boolean // Rewrite apply_patch custom tool

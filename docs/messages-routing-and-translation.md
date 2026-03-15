@@ -102,7 +102,7 @@ The Responses streaming translator is stateful and emits Anthropic stream events
 
 ## Small-Model Routing
 
-Compact and warmup routing only applies to `POST /v1/messages`, and it is disabled by default.
+Compact routing only applies to `POST /v1/messages`, and it is disabled by default.
 
 The reroute is allowed only when all of the following are true:
 
@@ -114,6 +114,3 @@ The reroute is allowed only when all of the following are true:
 Additional trigger rules:
 
 - `compactUseSmallModel`: matches the known Claude Code / OpenCode compact summarization system prompt
-- `warmupUseSmallModel`: requires an explicit warmup/probe marker in `anthropic-beta`, no tools, no system prompt, no explicit thinking request, a small `max_tokens`, and a single short user text message
-
-The warmup path is intentionally conservative. It should avoid ordinary user traffic rather than maximize reroute volume.

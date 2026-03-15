@@ -1,60 +1,58 @@
 import type { AnthropicMessagesPayload } from '~/translator'
 import type { Model } from '~/types'
 
-import { getSmallModel, shouldCompactUseSmallModel, shouldWarmupUseSmallModel } from './config'
+import { getSmallModel, shouldCompactUseSmallModel, shouldContextUpgrade } from './config'
+import { hasContextUpgradeRule, resolveContextUpgrade } from './context-upgrade'
 import {
   findModelById,
   modelSupportsAdaptiveThinking,
   modelSupportsToolCalls,
   modelSupportsVision,
 } from './model-capabilities'
+import { estimateAnthropicInputTokens } from './tokenizer'
 
 const COMPACT_SYSTEM_PROMPT_START
   = 'You are a helpful AI assistant tasked with summarizing conversations'
-const WARMUP_BETA_MARKERS = ['warmup', 'probe', 'preflight']
 
 export interface ModelRoutingResult {
   originalModel: string
   routedModel: string
-  reason?: 'compact' | 'warmup'
+  reason?: 'compact' | 'context-upgrade'
 }
 
 export function applyMessagesModelPolicy(
   payload: AnthropicMessagesPayload,
-  anthropicBetaHeader: string | undefined,
 ): ModelRoutingResult {
   const originalModel = payload.model
+
+  // Context upgrade: route to extended-context variant for large payloads.
+  // Checked first because it is independent of smallModel configuration.
+  if (shouldContextUpgrade() && hasContextUpgradeRule(payload.model)) {
+    const contextUpgradeTarget = resolveContextUpgrade(
+      payload.model,
+      estimateAnthropicInputTokens(payload),
+    )
+    if (contextUpgradeTarget) {
+      payload.model = contextUpgradeTarget
+      return { originalModel, routedModel: contextUpgradeTarget, reason: 'context-upgrade' }
+    }
+  }
+
+  // Small-model routing (compact) requires a configured smallModel and enabled flag.
   const smallModel = getSmallModel()
-  if (!smallModel) {
+  if (!smallModel || !shouldCompactUseSmallModel() || !isCompactRequest(payload)) {
     return { originalModel, routedModel: originalModel }
   }
 
   const originalSelection = findModelById(originalModel)
   const smallSelection = findModelById(smallModel)
 
-  if (
-    shouldCompactUseSmallModel()
-    && isCompactRequest(payload)
-    && canRouteToSmallModel(payload, originalSelection, smallSelection)
-  ) {
+  if (canRouteToSmallModel(payload, originalSelection, smallSelection)) {
     payload.model = smallModel
     return {
       originalModel,
       routedModel: smallModel,
       reason: 'compact',
-    }
-  }
-
-  if (
-    shouldWarmupUseSmallModel()
-    && isWarmupRequest(payload, anthropicBetaHeader)
-    && canRouteToSmallModel(payload, originalSelection, smallSelection)
-  ) {
-    payload.model = smallModel
-    return {
-      originalModel,
-      routedModel: smallModel,
-      reason: 'warmup',
     }
   }
 
@@ -72,34 +70,6 @@ export function isCompactRequest(payload: AnthropicMessagesPayload): boolean {
     block => typeof block.text === 'string'
       && block.text.startsWith(COMPACT_SYSTEM_PROMPT_START),
   )
-}
-
-export function isWarmupRequest(
-  payload: AnthropicMessagesPayload,
-  anthropicBetaHeader: string | undefined,
-): boolean {
-  if (!anthropicBetaHeader || isCompactRequest(payload)) {
-    return false
-  }
-
-  const normalizedBeta = anthropicBetaHeader.toLowerCase()
-  if (!WARMUP_BETA_MARKERS.some(marker => normalizedBeta.includes(marker))) {
-    return false
-  }
-
-  if (payload.system !== undefined || payload.thinking !== undefined) {
-    return false
-  }
-
-  if (payload.tools && payload.tools.length > 0) {
-    return false
-  }
-
-  if (payload.max_tokens > 64) {
-    return false
-  }
-
-  return hasSingleShortUserTextMessage(payload)
 }
 
 function canRouteToSmallModel(
@@ -132,28 +102,6 @@ function canRouteToSmallModel(
   }
 
   return true
-}
-
-function hasSingleShortUserTextMessage(payload: AnthropicMessagesPayload): boolean {
-  if (payload.messages.length !== 1) {
-    return false
-  }
-
-  const [message] = payload.messages
-  if (message.role !== 'user') {
-    return false
-  }
-
-  if (typeof message.content === 'string') {
-    return message.content.trim().length > 0 && message.content.length <= 64
-  }
-
-  if (message.content.length !== 1 || message.content[0]?.type !== 'text') {
-    return false
-  }
-
-  const text = message.content[0].text.trim()
-  return text.length > 0 && text.length <= 64
 }
 
 function hasVisionInput(payload: AnthropicMessagesPayload): boolean {

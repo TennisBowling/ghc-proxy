@@ -41,7 +41,7 @@ Client Request (OpenAI / Anthropic format)
 +-------------------------------------------+
 |         Model Policy & Routing            |
 |  (resolve model, smart rerouting,         |
-|   compact/warmup detection)               |
+|   compact detection)                     |
 +-------------------------------------------+
     |
     v
