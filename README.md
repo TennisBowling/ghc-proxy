@@ -255,6 +255,23 @@ Or in the proxy's **config file** (`~/.local/share/ghc-proxy/config.json`):
 
 > **Note:** Model fallbacks only apply to the **chat completions translation path**. The native Messages and Responses API strategies pass the model ID through to Copilot as-is.
 
+### Model Rewrites
+
+For more general model substitution, use `modelRewrites` in the config file (`~/.local/share/ghc-proxy/config.json`). Each rule maps a `from` pattern to a `to` model ID. The `from` field supports glob patterns with `*` wildcards, and the first matching rule wins.
+
+```json
+{
+  "modelRewrites": [
+    { "from": "claude-haiku-*", "to": "gpt-4.1-mini" },
+    { "from": "gpt-5.4*", "to": "gpt-5.2" }
+  ]
+}
+```
+
+Unlike model fallbacks (which only apply to the chat completions path), rewrites are applied **uniformly to all three endpoints** — `/v1/messages`, `/v1/chat/completions`, and `/v1/responses`. Target model names are normalized against Copilot's known model list using dash/dot equivalence (e.g. `gpt-4.1` matches `gpt-4-1`).
+
+Rewrites run **before** any other model policy — context upgrades, small-model routing, and strategy selection all see the rewritten model. This means a rewritten model still benefits from context-1m upgrades if the target has an upgrade rule.
+
 ### Small-Model Routing
 
 `/v1/messages` can optionally reroute specific low-value requests to a cheaper model:
