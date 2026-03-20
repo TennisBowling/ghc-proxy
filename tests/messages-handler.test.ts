@@ -1,21 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { getCachedConfig } from '~/lib/config'
 import { state } from '~/lib/state'
 import { processAnthropicBetaHeader } from '~/routes/messages/handler'
 
-import { buildModel, buildModelsResponse } from './helpers'
+import { buildModel, buildModelsResponse, clearConfig } from './helpers'
 
 // ── Setup / Teardown ──
 
 let originalModels: typeof state.cache.models
-
-function clearConfig() {
-  const config = getCachedConfig() as Record<string, unknown>
-  for (const key of Object.keys(config)) {
-    delete config[key]
-  }
-}
 
 beforeEach(() => {
   originalModels = state.cache.models

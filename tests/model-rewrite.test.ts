@@ -6,18 +6,11 @@ import { getContextUpgradeTarget, isContextLengthError, resolveContextUpgrade, r
 import { state } from '~/lib/state'
 import { estimateAnthropicInputTokens } from '~/lib/tokenizer'
 
-import { buildModel, buildModelsResponse } from './helpers'
+import { buildModel, buildModelsResponse, clearConfig } from './helpers'
 
 // ── Setup / Teardown ──
 
 let originalModels: typeof state.cache.models
-
-function clearConfig() {
-  const config = getCachedConfig() as Record<string, unknown>
-  for (const key of Object.keys(config)) {
-    delete config[key]
-  }
-}
 
 function setModelRewrites(rules: Array<{ from: string, to: string }>) {
   const config = getCachedConfig() as Record<string, unknown>
@@ -122,6 +115,22 @@ describe('rewriteModel — user rules', () => {
     const result = rewriteModel('claude-opus-4-6')
     expect(result.model).toBe('claude-opus-4.6')
     expect(result.model).not.toBe(result.originalModel)
+  })
+
+  test('normalizes user rule target with dash/dot equivalence', () => {
+    setModelRewrites([{ from: 'my-model', to: 'claude-opus-4-6-1m' }])
+
+    const result = rewriteModel('my-model')
+    expect(result.model).toBe('claude-opus-4.6-1m')
+    expect(result.originalModel).toBe('my-model')
+  })
+
+  test('preserves user rule target when not in models list', () => {
+    setModelRewrites([{ from: 'my-model', to: 'unknown-model' }])
+
+    const result = rewriteModel('my-model')
+    expect(result.model).toBe('unknown-model')
+    expect(result.originalModel).toBe('my-model')
   })
 })
 

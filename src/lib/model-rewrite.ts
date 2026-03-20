@@ -24,7 +24,8 @@ export function rewriteModel(modelId: string): ModelRewriteResult {
   if (userRules) {
     for (const rule of userRules) {
       if (matchesGlob(rule.from, modelId)) {
-        return { originalModel: modelId, model: rule.to }
+        const target = normalizeToKnownModel(rule.to) ?? rule.to
+        return { originalModel: modelId, model: target }
       }
     }
   }

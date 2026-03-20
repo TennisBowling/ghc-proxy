@@ -91,7 +91,7 @@ export async function handleMessagesCore(
   const anthropicBetaHeader = betaResult.header
   const modelRouting = applyMessagesModelPolicy(
     anthropicPayload,
-    { skipContextUpgrade: !!betaResult.upgradeTarget },
+    { betaUpgraded: !!betaResult.upgradeTarget },
   )
   const modelMapping: ModelMappingInfo = {
     originalModel: rewrite.originalModel,

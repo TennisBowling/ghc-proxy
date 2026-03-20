@@ -22,14 +22,18 @@ export interface ModelRoutingResult {
 
 export function applyMessagesModelPolicy(
   payload: AnthropicMessagesPayload,
-  options?: { skipContextUpgrade?: boolean },
+  options?: { betaUpgraded?: boolean },
 ): ModelRoutingResult {
   const originalModel = payload.model
 
+  // Beta header already upgraded to a 1M model — skip both context upgrade
+  // and compact routing. The user explicitly requested extended context.
+  if (options?.betaUpgraded) {
+    return { originalModel, routedModel: originalModel }
+  }
+
   // Context upgrade: route to extended-context variant for large payloads.
-  // Checked first because it is independent of smallModel configuration.
-  // Skipped when the beta header already triggered a context upgrade.
-  if (!options?.skipContextUpgrade && shouldContextUpgrade() && hasContextUpgradeRule(payload.model)) {
+  if (shouldContextUpgrade() && hasContextUpgradeRule(payload.model)) {
     const contextUpgradeTarget = resolveContextUpgrade(
       payload.model,
       estimateAnthropicInputTokens(payload),
