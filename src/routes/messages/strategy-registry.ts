@@ -55,6 +55,7 @@ export function selectStrategy(
 ): StrategyEntry {
   for (const entry of registry) {
     if (entry.canHandle(model)) {
+      consola.debug(`Strategy selected: ${entry.name} for model: ${model?.id ?? '(unknown)'}`)
       return entry
     }
   }

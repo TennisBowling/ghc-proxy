@@ -202,6 +202,9 @@ export class AnthropicStreamTranslator {
 
   onChunk(chunk: CapiChatCompletionChunk): Array<AnthropicStreamEventData> {
     const deltas = this.toConversationDeltas(chunk)
+    if (chunk.usage) {
+      this.state.lastUsage = chunk.usage
+    }
     if (deltas.length === 0) {
       return []
     }
@@ -209,7 +212,6 @@ export class AnthropicStreamTranslator {
     const events: Array<AnthropicStreamEventData> = []
 
     this.appendMessageStart(events, chunk)
-    this.state.lastUsage = chunk.usage
 
     for (const delta of deltas) {
       switch (delta.kind) {
@@ -249,10 +251,9 @@ export class AnthropicStreamTranslator {
             ...delta.metadata,
           }
           this.state.pendingStopReason = delta.stopReason
-          if (delta.usage) {
-            this.state.lastUsage = delta.usage
-          }
-          events.push(...this.onDone())
+          // Close open blocks but defer message_delta/message_stop to onDone()
+          // so that usage from a subsequent usage-only chunk can be captured
+          this.closeAllBlocks(events)
           break
       }
     }
@@ -266,9 +267,7 @@ export class AnthropicStreamTranslator {
     }
 
     const events: Array<AnthropicStreamEventData> = []
-    this.thinkingWriter.close(events)
-    this.textWriter.close(events)
-    this.toolWriter.closeAll(events)
+    this.closeAllBlocks(events)
 
     events.push(
       {
@@ -299,6 +298,12 @@ export class AnthropicStreamTranslator {
         },
       },
     ]
+  }
+
+  private closeAllBlocks(events: Array<AnthropicStreamEventData>) {
+    this.thinkingWriter.close(events)
+    this.textWriter.close(events)
+    this.toolWriter.closeAll(events)
   }
 
   private appendMessageStart(
