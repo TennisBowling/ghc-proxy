@@ -28,7 +28,9 @@ const configFileSchema = z.object({
   useFunctionApplyPatch: z.boolean().optional(),
   responsesApiContextManagementModels: z.array(z.string()).optional(),
   modelReasoningEfforts: z.record(z.string(), reasoningEffortSchema).optional(),
+  modelRewrites: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
   contextUpgrade: z.boolean().optional(),
+  contextUpgradeTokenThreshold: z.number().int().positive().optional(),
 }).passthrough()
 
 export type ConfigFile = z.infer<typeof configFileSchema>
@@ -41,6 +43,7 @@ const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'high'
 const DEFAULT_USE_FUNCTION_APPLY_PATCH = true
 const DEFAULT_COMPACT_USE_SMALL_MODEL = false
 const DEFAULT_CONTEXT_UPGRADE = true
+const DEFAULT_CONTEXT_UPGRADE_TOKEN_THRESHOLD = 160_000
 
 export async function readConfig(): Promise<ConfigFile> {
   try {
@@ -121,6 +124,10 @@ export function isResponsesApiContextManagementModel(model: string): boolean {
 
 export function shouldContextUpgrade(): boolean {
   return cachedConfig.contextUpgrade ?? DEFAULT_CONTEXT_UPGRADE
+}
+
+export function getContextUpgradeTokenThreshold(): number {
+  return cachedConfig.contextUpgradeTokenThreshold ?? DEFAULT_CONTEXT_UPGRADE_TOKEN_THRESHOLD
 }
 
 export function getReasoningEffortForModel(model: string): ReasoningEffort {

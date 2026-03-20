@@ -96,14 +96,14 @@ See the [Claude Code settings docs](https://docs.anthropic.com/en/docs/claude-co
 ghc-proxy sits between your tools and the GitHub Copilot API:
 
 ```text
-┌─────────────┐      ┌───────────┐      ┌──────────────────────┐
-│ Claude Code  │──────│ ghc-proxy │──────│ api.githubcopilot.com│
-│ Cursor       │      │ :4141     │      │                      │
-│ Any client   │      │           │      │                      │
-└─────────────┘      └───────────┘      └──────────────────────┘
-   OpenAI or            Translates          GitHub Copilot
-   Anthropic            between              API
-   format               formats
+┌──────────────┐      ┌───────────┐      ┌───────────────────────┐
+│ Claude Code  │──────│ ghc-proxy │──────│ api.githubcopilot.com │
+│ Cursor       │      │ :4141     │      │                       │
+│ Any client   │      │           │      │                       │
+└──────────────┘      └───────────┘      └───────────────────────┘
+   OpenAI or           Translates           GitHub Copilot
+   Anthropic           between              API
+   format              formats
 ```
 
 The proxy authenticates with GitHub using the [device code OAuth flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) (the same flow VS Code uses), then exchanges the GitHub token for a short-lived Copilot token that auto-refreshes.

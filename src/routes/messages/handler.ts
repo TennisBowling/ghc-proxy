@@ -4,8 +4,8 @@ import consola from 'consola'
 
 import { readCapiRequestContext } from '~/core/capi'
 import { shouldContextUpgrade } from '~/lib/config'
-import { getContextUpgradeTarget, isContextLengthError } from '~/lib/context-upgrade'
 import { findModelById } from '~/lib/model-capabilities'
+import { applyModelRewrite, getContextUpgradeTarget, isContextLengthError } from '~/lib/model-rewrite'
 import { applyMessagesModelPolicy } from '~/lib/request-model-policy'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
@@ -24,6 +24,45 @@ export interface MessagesCoreResult {
   modelMapping?: ModelMappingInfo
 }
 
+const CONTEXT_BETA_RE = /^context-\d+[km]-/
+
+interface BetaHeaderResult {
+  header: string | undefined
+  upgradeTarget: string | undefined
+}
+
+export function processAnthropicBetaHeader(
+  rawHeader: string | null,
+  model: string,
+): BetaHeaderResult {
+  if (!rawHeader)
+    return { header: undefined, upgradeTarget: undefined }
+
+  const values = rawHeader.split(',').map(v => v.trim()).filter(Boolean)
+  let upgradeTarget: string | undefined
+  const filtered: string[] = []
+
+  for (const value of values) {
+    if (CONTEXT_BETA_RE.test(value)) {
+      // Always strip context-* betas — Copilot doesn't understand them.
+      // If context upgrade is enabled and a target exists, apply it.
+      if (!upgradeTarget && shouldContextUpgrade()) {
+        const target = getContextUpgradeTarget(model)
+        if (target) {
+          upgradeTarget = target
+        }
+      }
+      continue
+    }
+    filtered.push(value)
+  }
+
+  return {
+    header: filtered.length > 0 ? filtered.join(',') : undefined,
+    upgradeTarget,
+  }
+}
+
 /**
  * Core handler for Anthropic messages endpoint.
  * Returns both the execution result and model mapping info.
@@ -35,12 +74,28 @@ export async function handleMessagesCore(
   if (consola.level >= 4)
     consola.debug('Anthropic request payload:', JSON.stringify(anthropicPayload))
 
-  const anthropicBetaHeader = headers.get('anthropic-beta') ?? undefined
+  // Stage 1: Model rewrite (normalize + user rules)
+  const rewrite = applyModelRewrite(anthropicPayload)
+
+  // Stage 2: Beta header processing (context-1m upgrade + filter)
+  const betaResult = processAnthropicBetaHeader(
+    headers.get('anthropic-beta'),
+    anthropicPayload.model,
+  )
+  if (betaResult.upgradeTarget) {
+    consola.debug(`Beta header context upgrade: ${anthropicPayload.model} → ${betaResult.upgradeTarget}`)
+    anthropicPayload.model = betaResult.upgradeTarget
+  }
+
+  // Stage 3: Model policy (skip proactive context upgrade if already upgraded by beta)
+  const anthropicBetaHeader = betaResult.header
   const modelRouting = applyMessagesModelPolicy(
     anthropicPayload,
+    { betaUpgraded: !!betaResult.upgradeTarget },
   )
   const modelMapping: ModelMappingInfo = {
-    originalModel: modelRouting.originalModel,
+    originalModel: rewrite.originalModel,
+    rewrittenModel: rewrite.model,
     mappedModel: modelRouting.routedModel,
   }
 
@@ -92,7 +147,7 @@ export async function handleMessagesCore(
       anthropicPayload,
       selectedModel: retryModel,
       upstreamSignal: retrySignal,
-      modelMapping: { originalModel: modelRouting.originalModel, mappedModel: upgradeTarget },
+      modelMapping: { originalModel: rewrite.originalModel, rewrittenModel: rewrite.model, mappedModel: upgradeTarget },
     })
   }
 

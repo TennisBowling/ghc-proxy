@@ -69,6 +69,20 @@ export function createMessagesViaChatCompletionsStrategy(
       }))
     },
 
+    onStreamDone() {
+      // Safety net: if the upstream closes without sending [DONE],
+      // ensure message_delta/message_stop are still emitted.
+      // No-op when [DONE] already triggered onDone() (idempotent guard).
+      if (!streamTranslator) {
+        return null
+      }
+      const finalEvents = streamTranslator.onDone()
+      return finalEvents.map(event => ({
+        event: event.type,
+        data: JSON.stringify(event),
+      }))
+    },
+
     shouldBreakStream() {
       return done
     },

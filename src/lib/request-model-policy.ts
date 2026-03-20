@@ -2,13 +2,13 @@ import type { AnthropicMessagesPayload } from '~/translator'
 import type { Model } from '~/types'
 
 import { getSmallModel, shouldCompactUseSmallModel, shouldContextUpgrade } from './config'
-import { hasContextUpgradeRule, resolveContextUpgrade } from './context-upgrade'
 import {
   findModelById,
   modelSupportsAdaptiveThinking,
   modelSupportsToolCalls,
   modelSupportsVision,
 } from './model-capabilities'
+import { hasContextUpgradeRule, resolveContextUpgrade } from './model-rewrite'
 import { estimateAnthropicInputTokens } from './tokenizer'
 
 const COMPACT_SYSTEM_PROMPT_START
@@ -22,11 +22,17 @@ export interface ModelRoutingResult {
 
 export function applyMessagesModelPolicy(
   payload: AnthropicMessagesPayload,
+  options?: { betaUpgraded?: boolean },
 ): ModelRoutingResult {
   const originalModel = payload.model
 
+  // Beta header already upgraded to a 1M model — skip both context upgrade
+  // and compact routing. The user explicitly requested extended context.
+  if (options?.betaUpgraded) {
+    return { originalModel, routedModel: originalModel }
+  }
+
   // Context upgrade: route to extended-context variant for large payloads.
-  // Checked first because it is independent of smallModel configuration.
   if (shouldContextUpgrade() && hasContextUpgradeRule(payload.model)) {
     const contextUpgradeTarget = resolveContextUpgrade(
       payload.model,

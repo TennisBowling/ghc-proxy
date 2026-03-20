@@ -17,6 +17,7 @@ import type {
 import { expect } from 'bun:test'
 import { Elysia } from 'elysia'
 
+import { getCachedConfig } from '~/lib/config'
 import { HTTPError } from '~/lib/error'
 import { state } from '~/lib/state'
 import { createCompletionRoutes } from '~/routes/chat-completions/route'
@@ -287,4 +288,14 @@ export function setupDefaultTestState() {
   state.config.rateLimitSeconds = undefined
   state.config.rateLimitWait = false
   state.rateLimit.nextAvailableAt = undefined
+}
+
+// ── Config Helpers ──
+
+/** Reset the module-level cachedConfig to empty defaults. */
+export function clearConfig() {
+  const config = getCachedConfig() as Record<string, unknown>
+  for (const key of Object.keys(config)) {
+    delete config[key]
+  }
 }

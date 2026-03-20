@@ -64,6 +64,54 @@ Priority order matters: native passthrough wins when available. The Responses pa
 
 An optional optimization that reroutes certain requests to a smaller (cheaper/faster) model.
 
+## Context Upgrade
+
+When Copilot exposes separate model IDs for extended context (e.g., `claude-opus-4.6-1m`), the proxy can automatically upgrade requests to use the higher-context variant. Three independent signals trigger an upgrade, evaluated in order:
+
+### Signal 1: `anthropic-beta` Header (Proactive)
+
+Clients like Claude Code send `anthropic-beta: context-1m-2025-08-07` to request 1M context. Copilot rejects this header, so the proxy intercepts it:
+1. Parse the comma-separated beta values
+2. If any value matches `context-<N>k|m-*` and a context upgrade rule exists for the model → upgrade model, strip that beta value
+3. Forward remaining beta values to Copilot
+
+This is checked **before** the token-estimation signal. When triggered, the token-estimation signal is skipped via `skipContextUpgrade`.
+
+### Signal 2: Token Estimation (Proactive)
+
+If no beta-header upgrade occurred, the proxy estimates the input token count. When the estimate exceeds the configured threshold (default: 160k tokens), the model is upgraded before sending the request.
+
+### Signal 3: Context Length Error (Reactive)
+
+If Copilot returns a context-length error at runtime, the proxy catches it and retries with the extended-context model variant. This is a last-resort fallback that works regardless of the first two signals.
+
+### Upgrade Rules
+
+Defined in `src/lib/model-rewrite.ts` as `CONTEXT_UPGRADE_RULES`:
+
+| From | To |
+|------|----|
+| `claude-opus-4.6` | `claude-opus-4.6-1m` |
+
+### Configuration
+
+Context upgrade is controlled by these config options:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `contextUpgrade` | `boolean` | `true` | Enable/disable all three context upgrade signals |
+| `contextUpgradeTokenThreshold` | `number` | `160000` | Token count threshold for proactive upgrade (Signal 2) |
+
+Example `config.json`:
+```json
+{
+  "contextUpgrade": true,
+  "contextUpgradeTokenThreshold": 160000
+}
+```
+
+### Small-Model Routing Details
+
 ### Activation
 
 Disabled by default. Requires `smallModel` to be set in config.

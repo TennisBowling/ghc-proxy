@@ -1,4 +1,5 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
+import type { ModelMappingInfo } from '~/lib/request-logger'
 
 import type { ResponsesPayload } from '~/types'
 import { readCapiRequestContext } from '~/core/capi'
@@ -6,6 +7,7 @@ import { shouldUseFunctionApplyPatch } from '~/lib/config'
 import { throwInvalidRequestError } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
 import { findModelById, modelSupportsEndpoint, RESPONSES_ENDPOINT } from '~/lib/model-capabilities'
+import { applyModelRewrite } from '~/lib/model-rewrite'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseResponsesPayload } from '~/lib/validation'
@@ -21,13 +23,21 @@ export interface ResponsesCoreParams {
   headers: Headers
 }
 
+export interface ResponsesCoreResult {
+  result: ExecutionResult
+  modelMapping?: ModelMappingInfo
+}
+
 /**
  * Core handler for responses endpoint.
  */
 export async function handleResponsesCore(
   { body, signal, headers }: ResponsesCoreParams,
-): Promise<ExecutionResult> {
+): Promise<ResponsesCoreResult> {
   const payload = parseResponsesPayload(body)
+
+  // Model rewrite (normalize + user rules)
+  const rewrite = applyModelRewrite(payload)
 
   applyResponsesToolTransforms(payload)
   applyResponsesInputPolicies(payload)
@@ -63,7 +73,15 @@ export async function handleResponsesCore(
     signal: upstreamSignal.signal,
   })
 
-  return runStrategy(strategy, upstreamSignal)
+  const result = await runStrategy(strategy, upstreamSignal)
+
+  const modelMapping: ModelMappingInfo = {
+    originalModel: rewrite.originalModel,
+    rewrittenModel: rewrite.model,
+    mappedModel: payload.model,
+  }
+
+  return { result, modelMapping }
 }
 
 function applyResponsesToolTransforms(payload: ResponsesPayload): void {

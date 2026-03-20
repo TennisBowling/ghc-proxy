@@ -430,7 +430,7 @@ describe('onChunk — tool call deltas', () => {
 // ---------------------------------------------------------------------------
 
 describe('onChunk — finish reason', () => {
-  test('finish_reason: stop triggers onDone inline, emits block closes + message_delta + message_stop', () => {
+  test('finish_reason: stop closes content blocks but defers message_delta/message_stop to onDone', () => {
     const translator = new AnthropicStreamTranslator()
     translator.onChunk(buildChunk({ choices: [buildTextChoice('Hello')] }))
 
@@ -438,15 +438,20 @@ describe('onChunk — finish reason', () => {
       choices: [buildFinishChoice('stop')],
     }))
 
-    // Should contain: content_block_stop (for open text block), message_delta, message_stop
+    // Should contain: content_block_stop (for open text block) but NOT message_delta/message_stop
     const blockStop = events.find(e => e.type === 'content_block_stop')
     expect(blockStop).toBeDefined()
 
-    const messageDelta = events.find(e => e.type === 'message_delta') as
+    expect(events.find(e => e.type === 'message_delta')).toBeUndefined()
+    expect(events.find(e => e.type === 'message_stop')).toBeUndefined()
+
+    // message_delta and message_stop come from onDone()
+    const doneEvents = translator.onDone()
+    const messageDelta = doneEvents.find(e => e.type === 'message_delta') as
       AnthropicMessageDeltaEvent
     expect(messageDelta).toBeDefined()
 
-    const messageStop = events.find(e => e.type === 'message_stop')
+    const messageStop = doneEvents.find(e => e.type === 'message_stop')
     expect(messageStop).toBeDefined()
   })
 
@@ -461,22 +466,24 @@ describe('onChunk — finish reason', () => {
       const translator = new AnthropicStreamTranslator()
       translator.onChunk(buildChunk({ choices: [buildTextChoice('text')] }))
 
-      const events = translator.onChunk(buildChunk({
+      translator.onChunk(buildChunk({
         choices: [buildFinishChoice(openaiReason)],
       }))
 
-      const messageDelta = events.find(e => e.type === 'message_delta') as
+      // message_delta is deferred to onDone()
+      const doneEvents = translator.onDone()
+      const messageDelta = doneEvents.find(e => e.type === 'message_delta') as
         AnthropicMessageDeltaEvent
       expect(messageDelta).toBeDefined()
       expect(messageDelta.delta.stop_reason).toBe(anthropicReason)
     }
   })
 
-  test('usage from finish chunk used in message_delta', () => {
+  test('usage from finish chunk used in message_delta via onDone', () => {
     const translator = new AnthropicStreamTranslator()
     translator.onChunk(buildChunk({ choices: [buildTextChoice('text')] }))
 
-    const events = translator.onChunk(buildChunk({
+    translator.onChunk(buildChunk({
       choices: [buildFinishChoice('stop')],
       usage: {
         prompt_tokens: 100,
@@ -485,12 +492,72 @@ describe('onChunk — finish reason', () => {
       },
     }))
 
-    const messageDelta = events.find(e => e.type === 'message_delta') as
+    // message_delta is deferred to onDone()
+    const doneEvents = translator.onDone()
+    const messageDelta = doneEvents.find(e => e.type === 'message_delta') as
       AnthropicMessageDeltaEvent
     expect(messageDelta).toBeDefined()
     expect(messageDelta.usage).toBeDefined()
     expect(messageDelta.usage!.input_tokens).toBe(100)
     expect(messageDelta.usage!.output_tokens).toBe(50)
+  })
+
+  test('usage from separate empty-choices chunk captured for message_delta', () => {
+    const translator = new AnthropicStreamTranslator()
+    translator.onChunk(buildChunk({ choices: [buildTextChoice('text')] }))
+
+    // Finish chunk without usage
+    translator.onChunk(buildChunk({
+      choices: [buildFinishChoice('stop')],
+    }))
+
+    // Usage-only chunk (empty choices, has usage) — OpenAI stream_options.include_usage pattern
+    const usageEvents = translator.onChunk(buildChunk({
+      choices: [],
+      usage: {
+        prompt_tokens: 200,
+        completion_tokens: 75,
+        total_tokens: 275,
+      },
+    }))
+    // Usage-only chunk returns empty events
+    expect(usageEvents).toEqual([])
+
+    // onDone() should use the captured usage
+    const doneEvents = translator.onDone()
+    const messageDelta = doneEvents.find(e => e.type === 'message_delta') as
+      AnthropicMessageDeltaEvent
+    expect(messageDelta).toBeDefined()
+    expect(messageDelta.usage).toBeDefined()
+    expect(messageDelta.usage!.input_tokens).toBe(200)
+    expect(messageDelta.usage!.output_tokens).toBe(75)
+  })
+
+  test('usage-only chunk returns empty events but updates internal state', () => {
+    const translator = new AnthropicStreamTranslator()
+    translator.onChunk(buildChunk({ choices: [buildTextChoice('text')] }))
+
+    // Send a usage-only chunk (no choices, has usage)
+    const events = translator.onChunk(buildChunk({
+      choices: [],
+      usage: {
+        prompt_tokens: 50,
+        completion_tokens: 25,
+        total_tokens: 75,
+      },
+    }))
+
+    // Should return empty events
+    expect(events).toEqual([])
+
+    // But when we finalize, the usage should be present
+    const doneEvents = translator.onDone()
+    const messageDelta = doneEvents.find(e => e.type === 'message_delta') as
+      AnthropicMessageDeltaEvent
+    expect(messageDelta).toBeDefined()
+    expect(messageDelta.usage).toBeDefined()
+    expect(messageDelta.usage!.input_tokens).toBe(50)
+    expect(messageDelta.usage!.output_tokens).toBe(25)
   })
 })
 
