@@ -1,80 +1,134 @@
 # AGENTS.md
 
-## Build, Lint, and Test Commands
+## Project Overview
 
-- **Build:**
-  `bun run build` (uses tsdown)
-- **Dev:**
-  `bun run dev`
-- **Lint:**
-  `bun run lint` (uses @antfu/eslint-config)
-- **Lint & Fix staged files:**
-  `bunx lint-staged`
-- **Test all:**
-   `bun test`
-- **Test single file:**
-   `bun test tests/anthropic-request.test.ts`
-- **Start (prod):**
-  `bun run start`
-- **Pack (dry-run):**
-  `bun pm pack --dry-run`
-- **Publish (manual):**
-  `npm publish --access public` (with npm 2FA)
-- **Release (auto bump + commit + tag):**
-  `bun run release:patch` / `bun run release:minor` / `bun run release:major`
+ghc-proxy is a reverse-engineered API translation proxy that converts GitHub Copilot's API into OpenAI and Anthropic compatible formats. **Unofficial, may break at any time.**
 
-## Code Style Guidelines
+- **Runtime:** Bun >= 1.2 (first-class), Node.js compatible via `@elysiajs/node` fallback
+- **Language:** TypeScript (ESNext, strict mode)
+- **Framework:** Elysia (HTTP server), citty (CLI), Zod (validation)
+- **Published as:** `ghc-proxy` npm package (single-file CLI at `dist/main.mjs`)
 
-- **Imports:**
-  Use ESNext syntax. Prefer absolute imports via `~/*` for `src/*` (see `tsconfig.json`).
-  Prefer index exports: `import { ... } from "~/clients"`, `import type { ... } from "~/types"`, `import { ... } from "~/translator"`.
-- **Formatting:**
-  Uses ESLint flat config via `@antfu/eslint-config` for linting and stylistic formatting. Run `bun run lint --fix` to auto-fix.
-- **Types:**
-  Strict TypeScript (`strict: true`). Avoid `any`; use explicit types and interfaces.
-- **Naming:**
-  Use `camelCase` for variables/functions, `PascalCase` for types/classes.
-- **Error Handling:**
-  Use explicit error classes (see `src/lib/error.ts`). Avoid silent failures.
-- **Unused:**
-  Unused imports/variables are errors (`noUnusedLocals`, `noUnusedParameters`).
-- **Switches:**
-  No fallthrough in switch statements.
-- **Modules:**
-  Use ESNext modules, no CommonJS.
-- **Testing:**
-   Use Bun's built-in test runner. Place tests in `tests/`, name as `*.test.ts`.
-- **Paths:**
-  Use path aliases (`~/*`) for imports from `src/`. Favor `~/clients`, `~/types`, and `~/translator` as public module entrypoints.
+## Commands
 
-## Collaboration Preferences (Learned)
+```bash
+bun install                          # Install dependencies (frozen lockfile in CI)
+bun run dev                          # Start with --watch (hot reload)
+bun run build                        # Bundle with tsdown -> dist/main.mjs
+bun run lint                         # ESLint with cache
+bun run lint:all                     # ESLint full scan (used in CI)
+bun run typecheck                    # tsc --noEmit
+bun test                             # Run all tests (Bun native test runner)
+bun test tests/validation.test.ts    # Run a single test file
+bun run start                        # Production server (NODE_ENV=production)
+bun run matrix:live                  # End-to-end Copilot upstream compatibility (uses real quota)
+bun run smoke:packaged               # Smoke test the packaged CLI
+bun run release:patch                # Bump patch, commit, tag (then git push manually)
+```
 
-- **Runtime Priority:**
-  Treat Bun as the first-class runtime. Prefer Bun-native APIs and Bun-oriented behavior unless cross-runtime support is explicitly requested.
-- **Complexity Bar:**
-  Favor senior-level simplicity. Avoid unnecessary wrappers/abstractions and choose the most direct implementation that remains robust.
-- **CLI Output Contract:**
-  Use `consola` for human-readable logs. For machine-readable output (for example `--json`), write clean data directly to stdout (Bun APIs preferred) without extra log prefixes.
-- **Startup Error Handling:**
-  Handle startup promise rejections explicitly and set a non-zero exit code for failures.
-- **Validation Discipline:**
-  After non-trivial changes, verify with `bun run lint:all`, `bun run typecheck`, `bun run build`, and `bun test` (when environment permissions allow).
-- **CLI Command Surface:**
-  Keep explicit subcommands. Do not introduce a default command; `start` must remain an explicit subcommand.
+**CI pipeline:** lint:all → typecheck → test → build → smoke:packaged
+
+**Validation after non-trivial changes:** `bun run lint:all && bun run typecheck && bun run build && bun test`
+
+## Architecture
+
+### Request Flow
+
+```text
+Client Request → Elysia Route Handler → Zod Validation → Execution Strategy Selection → Adapter/Translator → Copilot Client → Response Translation → Client
+```
+
+### Three Execution Paths for `/v1/messages`
+
+The proxy uses a per-model strategy pattern (`src/routes/messages/strategies/`) to choose the best upstream path:
+
+1. **Native Messages** — Direct `/v1/messages` passthrough when Copilot supports it
+2. **Responses Translation** — Anthropic → Responses → Anthropic when only `/responses` is available
+3. **Chat Completions Fallback** — Anthropic → OpenAI Chat → Anthropic (legacy)
+
+See `docs/messages-routing-and-translation.md` for routing logic and `docs/anthropic-translation-matrix.md` for translation coverage.
+
+### Model Pipeline (`/v1/messages`)
+
+Every `/v1/messages` request runs through a 4-stage model transformation in `src/routes/messages/handler.ts`:
+
+1. **Model Rewrite** (`src/lib/model-rewrite.ts`) — User-configured glob rules (first match wins), then built-in normalization (dash/dot equivalence against Copilot's cached model list). Runs once at handler entry.
+2. **Beta Header Processing** (`handler.ts: processAnthropicBetaHeader`) — Strips `context-*` betas (Copilot doesn't understand them). If context upgrade is enabled and a matching rule exists, triggers upgrade to the 1m variant.
+3. **Model Policy** (`src/lib/request-model-policy.ts`) — Proactive context upgrade (estimated tokens > threshold → 1m variant, skipped if beta already upgraded). Compact routing (summarization requests → `smallModel` if configured and capability-compatible).
+4. **Strategy Selection** (`src/routes/messages/strategy-registry.ts`) — Picks native-messages, responses-translation, or chat-completions based on the model's `supported_endpoints`.
+
+**Error retry:** Context-length errors (HTTP 400 with pattern-matched message) trigger reactive upgrade to the 1m variant and re-execute with a fresh strategy selection.
+
+**Other routes:** `/v1/chat/completions` uses a simpler pipeline (rewrite → legacy ModelResolver fallback). `/v1/responses` uses rewrite only.
+
+### Key Modules
+
+| Directory | Purpose |
+|-----------|---------|
+| `src/routes/` | HTTP route handlers (each route is self-contained) |
+| `src/translator/anthropic/` | Anthropic ↔ OpenAI protocol translation with IR, normalization, and streaming transducers |
+| `src/translator/responses/` | Anthropic ↔ Responses format translation with signature codec |
+| `src/adapters/` | Protocol adapters (OpenAI Chat, Anthropic Messages, Copilot transport) |
+| `src/clients/` | GitHub, Copilot, and VS Code API clients |
+| `src/core/capi/` | Copilot API compatibility layer (plan builder, profiles, request context) |
+| `src/core/conversation/` | Conversation state management |
+| `src/lib/` | Utilities (state, config, tokens, errors, model resolution, rate limiting, validation) |
+| `src/types/` | TypeScript type definitions |
+
+### Key Abstractions
+
+- **ExecutionStrategy** (`src/lib/execution-strategy.ts`) — Unifies request body prep, endpoint selection, response processing, and error handling across all route handlers.
+- **TranslationPolicy** (`src/translator/anthropic/translation-policy.ts`) — Tracks exact vs lossy vs unsupported behavior; validation rejects unsupported fields with 400 instead of silently dropping them.
+- **ModelResolver** (`src/lib/model-resolver.ts`) — Maps model IDs (e.g. `claude-sonnet-4.6` → actual Copilot model) with configurable fallbacks. Only applies to the chat completions strategy path; native Messages and Responses strategies pass model IDs through as-is.
+- **Global State** (`src/lib/state.ts`) — Cached models list, VS Code version, request counters, config.
+
+## Code Conventions
+
+- **Imports:** ESNext syntax only. Use `~/*` path alias for `src/*`. Prefer index exports (`~/clients`, `~/types`, `~/translator`). Use `import type` when possible.
+- **Style:** `@antfu/eslint-config` flat config. Run `bun run lint --fix` to auto-fix.
+- **Types:** Strict TypeScript. No `any`. No unused locals/parameters. No switch fallthrough. `verbatimModuleSyntax` enabled.
+- **Naming:** `camelCase` for variables/functions, `PascalCase` for types/classes.
+- **Errors:** Explicit error classes in `src/lib/error.ts` (`HTTPError`, `throwInvalidRequestError`). No silent failures.
+- **Logging:** `consola` for human-readable output. For machine-readable output (e.g. `--json`), write clean data directly to stdout.
+- **Testing:** Bun's built-in test runner (`bun:test`). Tests in `tests/*.test.ts`. Use `describe`/`test`/`expect` pattern.
+- **CLI:** `start` must remain an explicit subcommand. No default command.
+- **Complexity:** Favor direct implementation over unnecessary abstractions.
+- **Runtime:** Bun is first-class. Prefer Bun-native APIs unless cross-runtime support is explicitly needed.
+
+## Testing
+
+- **Runner:** Bun built-in (`bun:test`). Place tests in `tests/`, name as `*.test.ts`.
+- **Test helpers** (`tests/helpers.ts`):
+  - Model builders: `buildModel()`, `buildGptModel()`, `buildVisionModel()`, `buildModelsResponse()`
+  - Mock factories: `mockNonStreamingResponse()`, `mockStreamingResponse()`, `mockResponses()`, `mockMessages()`
+  - State snapshot/restore: `saveStateSnapshot()` / `restoreStateSnapshot()` for test isolation
+  - SSE stream utilities: `parseSse()`, `createStream()`
+  - Default state setup: `setupDefaultTestState()`, `clearConfig()`
+- Tests use typed fixture arrays for parameterized cases.
+
+## Pre-commit Hooks
+
+`simple-git-hooks` runs `lint-staged` which runs `bun run lint --fix` on all staged files.
 
 ## Release Automation
 
-- **Tag-triggered release pipeline:**
-  `.github/workflows/release-npm.yml` is the single tag-triggered workflow and handles changelog + npm publish.
-- **Version contract:**
-  The workflow validates that `vX.Y.Z` matches `package.json` `version` before publish.
-- **Publishing auth model:**
-  Use npm Trusted Publishing (GitHub OIDC). Do not use long-lived npm tokens in repository secrets.
-- **Typical release flow:**
-  Run `bun run release:patch` (or `:minor` / `:major`) to bump, commit, and tag, then push branch and tag manually.
-- **Version immutability:**
-  npm does not allow republishing an existing version. Always bump to a new version before tagging.
+- **Tag-triggered release pipeline:** `.github/workflows/release-npm.yml` handles changelog + npm publish.
+- **Version contract:** The workflow validates that `vX.Y.Z` matches `package.json` `version` before publish.
+- **Publishing auth model:** npm Trusted Publishing (GitHub OIDC). No long-lived npm tokens.
+- **Typical release flow:** `bun run release:patch` (or `:minor` / `:major`) to bump, commit, and tag, then `git push && git push --tags`.
+- **Version immutability:** npm does not allow republishing an existing version. Always bump before tagging.
+
+## Design Documentation
+
+`docs/design/` contains architecture and design documents. When making architectural changes, update the relevant docs to keep them in sync with the code.
+
+Key references:
+- `docs/messages-routing-and-translation.md` — Routing logic for `/v1/messages`
+- `docs/anthropic-translation-matrix.md` — Translation coverage between protocols
+- `docs/design/model-routing.md` — Model pipeline design and context upgrade mechanics
+- `docs/design/execution-strategy.md` — Strategy pattern and error handling
+- `docs/design/translation-pipeline.md` — Full translation pipeline architecture
 
 ---
 
-This file is tailored for agentic coding agents. For more details, see the configs in `eslint.config.js` and `tsconfig.json`. No Cursor or Copilot rules detected.
+This file is tailored for agentic coding agents.

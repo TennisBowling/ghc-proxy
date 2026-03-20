@@ -29,3 +29,4 @@ Investigation notes and findings from upstream API behavior analysis.
 |----------|-------------|
 | [Anthropic Translation Matrix](anthropic-translation-matrix.md) | Field-level translation compatibility for the chat-completions fallback |
 | [Messages Routing and Translation](messages-routing-and-translation.md) | Per-model routing decision logic and Responses API compatibility |
+| [Responses Upstream Notes](responses-upstream-notes.md) | Live upstream compatibility observations for the Responses API path |
