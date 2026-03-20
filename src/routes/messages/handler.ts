@@ -4,8 +4,8 @@ import consola from 'consola'
 
 import { readCapiRequestContext } from '~/core/capi'
 import { shouldContextUpgrade } from '~/lib/config'
-import { getContextUpgradeTarget, isContextLengthError } from '~/lib/context-upgrade'
 import { findModelById } from '~/lib/model-capabilities'
+import { applyModelRewrite, getContextUpgradeTarget, isContextLengthError } from '~/lib/model-rewrite'
 import { applyMessagesModelPolicy } from '~/lib/request-model-policy'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
@@ -35,12 +35,16 @@ export async function handleMessagesCore(
   if (consola.level >= 4)
     consola.debug('Anthropic request payload:', JSON.stringify(anthropicPayload))
 
+  // Stage 1: Model rewrite (normalize + user rules)
+  const rewrite = applyModelRewrite(anthropicPayload)
+
   const anthropicBetaHeader = headers.get('anthropic-beta') ?? undefined
   const modelRouting = applyMessagesModelPolicy(
     anthropicPayload,
   )
   const modelMapping: ModelMappingInfo = {
-    originalModel: modelRouting.originalModel,
+    originalModel: rewrite.originalModel,
+    rewrittenModel: rewrite.model,
     mappedModel: modelRouting.routedModel,
   }
 
@@ -92,7 +96,7 @@ export async function handleMessagesCore(
       anthropicPayload,
       selectedModel: retryModel,
       upstreamSignal: retrySignal,
-      modelMapping: { originalModel: modelRouting.originalModel, mappedModel: upgradeTarget },
+      modelMapping: { originalModel: rewrite.originalModel, rewrittenModel: rewrite.model, mappedModel: upgradeTarget },
     })
   }
 

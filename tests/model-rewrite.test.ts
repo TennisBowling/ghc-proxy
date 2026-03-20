@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { getContextUpgradeTarget, isContextLengthError, resolveContextUpgrade } from '~/lib/context-upgrade'
+import { getCachedConfig } from '~/lib/config'
 import { HTTPError } from '~/lib/error'
+import { getContextUpgradeTarget, isContextLengthError, resolveContextUpgrade, rewriteModel } from '~/lib/model-rewrite'
 import { state } from '~/lib/state'
 import { estimateAnthropicInputTokens } from '~/lib/tokenizer'
 
@@ -11,16 +12,117 @@ import { buildModel, buildModelsResponse } from './helpers'
 
 let originalModels: typeof state.cache.models
 
+function clearConfig() {
+  const config = getCachedConfig() as Record<string, unknown>
+  for (const key of Object.keys(config)) {
+    delete config[key]
+  }
+}
+
+function setModelRewrites(rules: Array<{ from: string, to: string }>) {
+  const config = getCachedConfig() as Record<string, unknown>
+  config.modelRewrites = rules
+}
+
 beforeEach(() => {
   originalModels = state.cache.models
   state.cache.models = buildModelsResponse(
     buildModel('claude-opus-4.6'),
     buildModel('claude-opus-4.6-1m'),
+    buildModel('claude-sonnet-4.5'),
   )
+  clearConfig()
 })
 
 afterEach(() => {
   state.cache.models = originalModels
+  clearConfig()
+})
+
+// ── rewriteModel — normalization ──
+
+describe('rewriteModel — normalization', () => {
+  test('exact match passes through unchanged', () => {
+    const result = rewriteModel('claude-opus-4.6')
+    expect(result.model).toBe('claude-opus-4.6')
+    expect(result.originalModel).toBe('claude-opus-4.6')
+    expect(result.model).toBe(result.originalModel)
+  })
+
+  test('normalizes dashes to dots when model exists', () => {
+    const result = rewriteModel('claude-opus-4-6')
+    expect(result.model).toBe('claude-opus-4.6')
+    expect(result.originalModel).toBe('claude-opus-4-6')
+    expect(result.model).not.toBe(result.originalModel)
+  })
+
+  test('normalizes dashes to dots for -1m variant', () => {
+    const result = rewriteModel('claude-opus-4-6-1m')
+    expect(result.model).toBe('claude-opus-4.6-1m')
+    expect(result.originalModel).toBe('claude-opus-4-6-1m')
+    expect(result.model).not.toBe(result.originalModel)
+  })
+
+  test('unknown model passes through unchanged', () => {
+    const result = rewriteModel('gpt-5.4')
+    expect(result.model).toBe('gpt-5.4')
+    expect(result.originalModel).toBe('gpt-5.4')
+    expect(result.model).toBe(result.originalModel)
+  })
+
+  test('no cached models — passes through unchanged', () => {
+    state.cache.models = undefined
+    const result = rewriteModel('claude-opus-4-6')
+    expect(result.model).toBe('claude-opus-4-6')
+    expect(result.model).toBe(result.originalModel)
+  })
+})
+
+// ── rewriteModel — user rules ──
+
+describe('rewriteModel — user rules', () => {
+  test('exact match user rule', () => {
+    setModelRewrites([{ from: 'my-model', to: 'claude-opus-4.6' }])
+
+    const result = rewriteModel('my-model')
+    expect(result.model).toBe('claude-opus-4.6')
+    expect(result.model).not.toBe(result.originalModel)
+  })
+
+  test('glob pattern user rule', () => {
+    setModelRewrites([{ from: 'claude-opus-*', to: 'gpt-5.4' }])
+
+    const result = rewriteModel('claude-opus-4.6')
+    expect(result.model).toBe('gpt-5.4')
+    expect(result.model).not.toBe(result.originalModel)
+  })
+
+  test('user rules take priority over built-in normalization', () => {
+    setModelRewrites([{ from: 'claude-opus-4-6', to: 'custom-model' }])
+
+    const result = rewriteModel('claude-opus-4-6')
+    expect(result.model).toBe('custom-model')
+    expect(result.model).not.toBe(result.originalModel)
+  })
+
+  test('first match wins', () => {
+    setModelRewrites([
+      { from: 'claude-opus-*', to: 'first-match' },
+      { from: 'claude-opus-4.6', to: 'second-match' },
+    ])
+
+    const result = rewriteModel('claude-opus-4.6')
+    expect(result.model).toBe('first-match')
+    expect(result.model).not.toBe(result.originalModel)
+  })
+
+  test('non-matching user rules fall through to normalization', () => {
+    setModelRewrites([{ from: 'gpt-*', to: 'something' }])
+
+    const result = rewriteModel('claude-opus-4-6')
+    expect(result.model).toBe('claude-opus-4.6')
+    expect(result.model).not.toBe(result.originalModel)
+  })
 })
 
 // ── estimateAnthropicInputTokens ──
@@ -32,7 +134,6 @@ describe('estimateAnthropicInputTokens', () => {
       max_tokens: 4096,
       messages: [{ role: 'user', content: 'Hello world' }],
     } as any)
-    // "Hello world" = 11 chars → ~4 tokens
     expect(tokens).toBeGreaterThan(0)
     expect(tokens).toBeLessThan(20)
   })
@@ -46,7 +147,6 @@ describe('estimateAnthropicInputTokens', () => {
       messages: [{ role: 'user', content: 'Summarize' }],
       tools: [{ name: 'get_weather', description: 'Get weather', input_schema: { type: 'object', properties: { city: { type: 'string' } } } }],
     } as any)
-    // 700k chars / 3.5 ≈ 200k tokens
     expect(tokens).toBeGreaterThan(190_000)
   })
 

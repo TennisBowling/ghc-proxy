@@ -6,6 +6,7 @@ import { CopilotTransport, OpenAIChatAdapter } from '~/adapters'
 import { readCapiRequestContext } from '~/core/capi'
 import { runStrategy } from '~/lib/execution-strategy'
 import { findModelById } from '~/lib/model-capabilities'
+import { applyModelRewrite } from '~/lib/model-rewrite'
 import { createCopilotClient } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
@@ -34,7 +35,10 @@ export async function handleCompletionCore(
   let payload = parseOpenAIChatPayload(body)
   consola.debug('Request payload:', JSON.stringify(payload).slice(-400))
 
-  const originalModel = payload.model
+  // Model rewrite (normalize + user rules)
+  const rewrite = applyModelRewrite(payload)
+
+  const originalModel = rewrite.originalModel
   const selectedModel = findModelById(payload.model)
 
   try {
@@ -66,6 +70,7 @@ export async function handleCompletionCore(
 
   const modelMapping: ModelMappingInfo = {
     originalModel,
+    rewrittenModel: rewrite.model,
     mappedModel: plan.resolvedModel,
   }
 

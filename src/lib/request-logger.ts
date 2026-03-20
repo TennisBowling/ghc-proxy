@@ -2,6 +2,7 @@ import { colorize } from 'consola/utils'
 
 export interface ModelMappingInfo {
   originalModel?: string
+  rewrittenModel?: string
   mappedModel?: string
 }
 
@@ -61,18 +62,30 @@ function formatModelMapping(info: ModelMappingInfo | undefined): string {
   if (!info)
     return ''
 
-  const { originalModel, mappedModel } = info
-  if (!originalModel && !mappedModel)
+  const { originalModel, rewrittenModel, mappedModel } = info
+  if (!originalModel && !rewrittenModel && !mappedModel)
     return ''
 
-  const original = originalModel ?? '-'
-  const mapped = mappedModel ?? '-'
+  const parts: string[] = []
 
-  if (original === mapped) {
-    return ` ${colorize('dim', 'model=')}${colorize('blueBright', original)}`
+  // Start with original model
+  const displayOriginal = originalModel ?? '-'
+  parts.push(colorize('blueBright', displayOriginal))
+
+  // Rewrite arrow (~>)
+  if (rewrittenModel && rewrittenModel !== displayOriginal) {
+    parts.push(colorize('dim', '~>'))
+    parts.push(colorize('cyanBright', rewrittenModel))
   }
 
-  return ` ${colorize('dim', 'model=')}${colorize('blueBright', original)} ${colorize('dim', '→')} ${colorize('greenBright', mapped)}`
+  // Routing arrow (→) — compare against rewritten (if present) or original
+  const effectiveModel = rewrittenModel ?? displayOriginal
+  if (mappedModel && mappedModel !== effectiveModel) {
+    parts.push(colorize('dim', '→'))
+    parts.push(colorize('greenBright', mappedModel))
+  }
+
+  return ` ${colorize('dim', 'model=')}${parts.join(' ')}`
 }
 
 /**

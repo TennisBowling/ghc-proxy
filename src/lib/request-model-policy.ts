@@ -2,13 +2,13 @@ import type { AnthropicMessagesPayload } from '~/translator'
 import type { Model } from '~/types'
 
 import { getSmallModel, shouldCompactUseSmallModel, shouldContextUpgrade } from './config'
-import { hasContextUpgradeRule, resolveContextUpgrade } from './context-upgrade'
 import {
   findModelById,
   modelSupportsAdaptiveThinking,
   modelSupportsToolCalls,
   modelSupportsVision,
 } from './model-capabilities'
+import { hasContextUpgradeRule, resolveContextUpgrade } from './model-rewrite'
 import { estimateAnthropicInputTokens } from './tokenizer'
 
 const COMPACT_SYSTEM_PROMPT_START
