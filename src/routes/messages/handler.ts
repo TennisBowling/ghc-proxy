@@ -24,6 +24,41 @@ export interface MessagesCoreResult {
   modelMapping?: ModelMappingInfo
 }
 
+const CONTEXT_BETA_RE = /^context-\d+[km]-/
+
+interface BetaHeaderResult {
+  header: string | undefined
+  upgradeTarget: string | undefined
+}
+
+function processAnthropicBetaHeader(
+  rawHeader: string | null,
+  model: string,
+): BetaHeaderResult {
+  if (!rawHeader)
+    return { header: undefined, upgradeTarget: undefined }
+
+  const values = rawHeader.split(',').map(v => v.trim()).filter(Boolean)
+  let upgradeTarget: string | undefined
+  const filtered: string[] = []
+
+  for (const value of values) {
+    if (!upgradeTarget && CONTEXT_BETA_RE.test(value) && shouldContextUpgrade()) {
+      const target = getContextUpgradeTarget(model)
+      if (target) {
+        upgradeTarget = target
+        continue
+      }
+    }
+    filtered.push(value)
+  }
+
+  return {
+    header: filtered.length > 0 ? filtered.join(',') : undefined,
+    upgradeTarget,
+  }
+}
+
 /**
  * Core handler for Anthropic messages endpoint.
  * Returns both the execution result and model mapping info.
@@ -38,9 +73,21 @@ export async function handleMessagesCore(
   // Stage 1: Model rewrite (normalize + user rules)
   const rewrite = applyModelRewrite(anthropicPayload)
 
-  const anthropicBetaHeader = headers.get('anthropic-beta') ?? undefined
+  // Stage 2: Beta header processing (context-1m upgrade + filter)
+  const betaResult = processAnthropicBetaHeader(
+    headers.get('anthropic-beta'),
+    anthropicPayload.model,
+  )
+  if (betaResult.upgradeTarget) {
+    consola.debug(`Beta header context upgrade: ${anthropicPayload.model} → ${betaResult.upgradeTarget}`)
+    anthropicPayload.model = betaResult.upgradeTarget
+  }
+
+  // Stage 3: Model policy (skip proactive context upgrade if already upgraded by beta)
+  const anthropicBetaHeader = betaResult.header
   const modelRouting = applyMessagesModelPolicy(
     anthropicPayload,
+    { skipContextUpgrade: !!betaResult.upgradeTarget },
   )
   const modelMapping: ModelMappingInfo = {
     originalModel: rewrite.originalModel,

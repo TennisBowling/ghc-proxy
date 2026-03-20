@@ -1,6 +1,6 @@
 import consola from 'consola'
 
-import { getCachedConfig } from './config'
+import { getCachedConfig, getContextUpgradeTokenThreshold } from './config'
 import { HTTPError } from './error'
 import { findModelById } from './model-capabilities'
 import { state } from './state'
@@ -98,9 +98,8 @@ function matchesGlob(pattern: string, value: string): boolean {
 const CONTEXT_UPGRADE_RULES: ReadonlyArray<{
   from: string
   to: string
-  tokenThreshold: number
 }> = [
-  { from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m', tokenThreshold: 190_000 },
+  { from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' },
 ]
 
 /** Pre-computed set for fast model eligibility checks (avoids token estimation on non-eligible models). */
@@ -133,7 +132,7 @@ export function resolveContextUpgrade(
   estimatedTokens: number,
 ): string | undefined {
   const rule = findUpgradeRule(model)
-  if (rule && estimatedTokens > rule.tokenThreshold) {
+  if (rule && estimatedTokens > getContextUpgradeTokenThreshold()) {
     return rule.to
   }
   return undefined

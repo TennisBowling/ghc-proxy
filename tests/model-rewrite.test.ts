@@ -268,7 +268,7 @@ describe('resolveContextUpgrade', () => {
   })
 
   test('skips at exact threshold', () => {
-    expect(resolveContextUpgrade('claude-opus-4.6', 190_000)).toBeUndefined()
+    expect(resolveContextUpgrade('claude-opus-4.6', 160_000)).toBeUndefined()
   })
 
   test('skips unknown models', () => {
