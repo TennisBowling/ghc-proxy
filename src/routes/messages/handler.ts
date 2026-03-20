@@ -31,7 +31,7 @@ interface BetaHeaderResult {
   upgradeTarget: string | undefined
 }
 
-function processAnthropicBetaHeader(
+export function processAnthropicBetaHeader(
   rawHeader: string | null,
   model: string,
 ): BetaHeaderResult {
@@ -43,12 +43,16 @@ function processAnthropicBetaHeader(
   const filtered: string[] = []
 
   for (const value of values) {
-    if (!upgradeTarget && CONTEXT_BETA_RE.test(value) && shouldContextUpgrade()) {
-      const target = getContextUpgradeTarget(model)
-      if (target) {
-        upgradeTarget = target
-        continue
+    if (CONTEXT_BETA_RE.test(value)) {
+      // Always strip context-* betas — Copilot doesn't understand them.
+      // If context upgrade is enabled and a target exists, apply it.
+      if (!upgradeTarget && shouldContextUpgrade()) {
+        const target = getContextUpgradeTarget(model)
+        if (target) {
+          upgradeTarget = target
+        }
       }
+      continue
     }
     filtered.push(value)
   }
