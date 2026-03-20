@@ -12,7 +12,7 @@ A proxy that turns your GitHub Copilot subscription into an OpenAI and Anthropic
 **TL;DR** — Install [Bun](https://bun.com/docs/installation), then run:
 
 ```bash
-bunx ghc-proxy@latest start --wait
+bunx ghc-proxy@latest start
 ```
 
 ## Prerequisites
@@ -28,15 +28,15 @@ Before you start, make sure you have:
 
 1. Start the proxy:
 
-       bunx ghc-proxy@latest start --wait
-
-   > **Recommended:** The `--wait` flag queues requests instead of rejecting them with a 429 error when you hit Copilot rate limits. This is the simplest way to run the proxy for daily use.
+       bunx ghc-proxy@latest start
 
 2. On the first run, you will be guided through GitHub's device-code authentication flow. Follow the prompts to authorize the proxy.
 
 3. Once authenticated, the proxy starts on **`http://localhost:4141`** and is ready to accept requests.
 
 That's it. Any tool that supports the OpenAI or Anthropic API can now point to `http://localhost:4141`.
+
+> **Tip:** If you set `--rate-limit`, add `--wait` to queue requests instead of rejecting them with 429 when the cooldown has not elapsed yet. See [Rate Limiting](#rate-limiting) for details.
 
 ## Using with Claude Code
 
@@ -73,7 +73,7 @@ Create or edit `~/.claude/settings.json` (this applies globally to all projects)
 Then simply start the proxy and use Claude Code as usual:
 
 ```bash
-bunx ghc-proxy@latest start --wait
+bunx ghc-proxy@latest start
 ```
 
 **What each environment variable does:**
@@ -91,7 +91,204 @@ bunx ghc-proxy@latest start --wait
 
 See the [Claude Code settings docs](https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables) for more options.
 
-## What it Does
+## CLI Reference
+
+ghc-proxy uses a subcommand structure:
+
+```bash
+bunx ghc-proxy@latest start          # Start the proxy server
+bunx ghc-proxy@latest auth           # Run GitHub auth flow without starting the server
+bunx ghc-proxy@latest check-usage    # Show your Copilot usage/quota in the terminal
+bunx ghc-proxy@latest debug          # Print diagnostic info (version, paths, token status)
+```
+
+### `start` Options
+
+| Option | Alias | Default | Description |
+|--------|-------|---------|-------------|
+| `--port` | `-p` | `4141` | Port to listen on |
+| `--verbose` | `-v` | `false` | Enable verbose logging |
+| `--account-type` | `-a` | `individual` | `individual`, `business`, or `enterprise` |
+| `--rate-limit` | `-r` | -- | Minimum seconds between requests |
+| `--wait` | `-w` | `false` | Queue requests instead of rejecting with 429 when `--rate-limit` cooldown has not elapsed (requires `--rate-limit`) |
+| `--manual` | -- | `false` | Manually approve each request |
+| `--github-token` | `-g` | -- | Pass a GitHub token directly (from `auth`) |
+| `--claude-code` | `-c` | `false` | Generate a Claude Code launch command |
+| `--show-token` | -- | `false` | Display tokens on auth and refresh |
+| `--proxy-env` | -- | `false` | Use `HTTP_PROXY`/`HTTPS_PROXY` from env (Node.js only; Bun reads proxy env natively) |
+| `--idle-timeout` | -- | `120` | Bun server idle timeout in seconds |
+| `--upstream-timeout` | -- | `1800` | Upstream request timeout in seconds (0 to disable) |
+
+## Rate Limiting
+
+If you want to throttle how often the proxy forwards requests:
+
+```bash
+# Enforce a 30-second cooldown between requests
+bunx ghc-proxy@latest start --rate-limit 30
+
+# Same, but queue requests instead of returning 429
+bunx ghc-proxy@latest start --rate-limit 30 --wait
+
+# Manually approve every request (useful for debugging)
+bunx ghc-proxy@latest start --manual
+```
+
+`--wait` only takes effect when `--rate-limit` is also set. Without `--rate-limit`, there is no cooldown to wait on and `--wait` has no effect.
+
+## Account Types
+
+If you have a GitHub Business or Enterprise Copilot plan, pass `--account-type`:
+
+```bash
+bunx ghc-proxy@latest start --account-type business
+bunx ghc-proxy@latest start --account-type enterprise
+```
+
+This routes requests to the correct Copilot API endpoint for your plan. See the [GitHub docs on network routing](https://docs.github.com/en/enterprise-cloud@latest/copilot/managing-copilot/managing-github-copilot-in-your-organization/managing-access-to-github-copilot-in-your-organization/managing-github-copilot-access-to-your-organizations-network#configuring-copilot-subscription-based-network-routing-for-your-enterprise-or-organization) for details.
+
+## Configuration
+
+The proxy reads an optional JSON config file at:
+
+```
+~/.local/share/ghc-proxy/config.json
+```
+
+All fields are optional. The full schema:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `modelRewrites` | `{ from, to }[]` | -- | Glob-pattern model substitution rules (see [Model Rewrites](#model-rewrites)) |
+| `modelFallback` | `object` | -- | Override default model fallbacks (see [Customizing Fallbacks](#customizing-fallbacks)) |
+| `modelFallback.claudeOpus` | `string` | `claude-opus-4.6` | Fallback for `claude-opus-*` models |
+| `modelFallback.claudeSonnet` | `string` | `claude-sonnet-4.6` | Fallback for `claude-sonnet-*` models |
+| `modelFallback.claudeHaiku` | `string` | `claude-haiku-4.5` | Fallback for `claude-haiku-*` models |
+| `smallModel` | `string` | -- | Target model for compact request routing (see [Small-Model Routing](#small-model-routing)) |
+| `compactUseSmallModel` | `boolean` | `false` | Route compact/summarization requests to `smallModel` |
+| `contextUpgrade` | `boolean` | `true` | Auto-upgrade to extended-context model variants (see [Context-1M Auto-Upgrade](#context-1m-auto-upgrade)) |
+| `contextUpgradeTokenThreshold` | `number` | `160000` | Token threshold for proactive context upgrade |
+| `useFunctionApplyPatch` | `boolean` | `true` | Rewrite `apply_patch` custom tool as function tool on Responses path |
+| `responsesApiContextManagementModels` | `string[]` | -- | Models that enable Responses context compaction |
+| `modelReasoningEfforts` | `Record<string, string>` | -- | Per-model reasoning effort defaults for Anthropic-to-Responses translation |
+
+Example:
+
+```json
+{
+  "modelRewrites": [
+    { "from": "claude-haiku-*", "to": "gpt-4.1-mini" }
+  ],
+  "modelFallback": {
+    "claudeOpus": "claude-opus-4.6",
+    "claudeSonnet": "claude-sonnet-4.6"
+  },
+  "smallModel": "gpt-4.1-mini",
+  "compactUseSmallModel": true,
+  "contextUpgrade": true,
+  "contextUpgradeTokenThreshold": 160000,
+  "useFunctionApplyPatch": true,
+  "responsesApiContextManagementModels": ["gpt-5", "gpt-5-mini"],
+  "modelReasoningEfforts": {
+    "gpt-5": "high",
+    "gpt-5-mini": "medium"
+  }
+}
+```
+
+**Priority order** for model fallbacks: environment variable > config.json > built-in default.
+
+## Model Mapping
+
+When Claude Code sends a request for a model like `claude-sonnet-4.6`, the proxy maps it to an actual model available on Copilot. The mapping logic works as follows:
+
+1. If the requested model ID is known to Copilot (e.g. `gpt-4.1`, `claude-sonnet-4.5`), it is used as-is.
+2. If the model starts with `claude-opus-`, `claude-sonnet-`, or `claude-haiku-`, it falls back to a configured model.
+
+### Default Fallbacks
+
+| Prefix | Default Fallback |
+|--------|-----------------|
+| `claude-opus-*` | `claude-opus-4.6` |
+| `claude-sonnet-*` | `claude-sonnet-4.6` |
+| `claude-haiku-*` | `claude-haiku-4.5` |
+
+### Customizing Fallbacks
+
+You can override the defaults with **environment variables**:
+
+```bash
+MODEL_FALLBACK_CLAUDE_OPUS=claude-opus-4.6
+MODEL_FALLBACK_CLAUDE_SONNET=claude-sonnet-4.6
+MODEL_FALLBACK_CLAUDE_HAIKU=claude-haiku-4.5
+```
+
+Or in the proxy's **config file** (`~/.local/share/ghc-proxy/config.json`):
+
+```json
+{
+  "modelFallback": {
+    "claudeOpus": "claude-opus-4.6",
+    "claudeSonnet": "claude-sonnet-4.6",
+    "claudeHaiku": "claude-haiku-4.5"
+  }
+}
+```
+
+> **Note:** Model fallbacks only apply to the **chat completions translation path**. The native Messages and Responses API strategies pass the model ID through to Copilot as-is.
+
+### Model Rewrites
+
+For more general model substitution, use `modelRewrites` in the config file. Each rule maps a `from` pattern to a `to` model ID. The `from` field supports glob patterns with `*` wildcards, and the first matching rule wins.
+
+```json
+{
+  "modelRewrites": [
+    { "from": "claude-haiku-*", "to": "gpt-4.1-mini" },
+    { "from": "gpt-5.4*", "to": "gpt-5.2" }
+  ]
+}
+```
+
+Unlike model fallbacks (which only apply to the chat completions path), rewrites are applied **uniformly to all three endpoints** — `/v1/messages`, `/v1/chat/completions`, and `/v1/responses`. Target model names are normalized against Copilot's known model list using dash/dot equivalence (e.g. `gpt-4.1` matches `gpt-4-1`).
+
+Rewrites run **before** any other model policy — context upgrades, small-model routing, and strategy selection all see the rewritten model. This means a rewritten model still benefits from context-1m upgrades if the target has an upgrade rule.
+
+### Context-1M Auto-Upgrade
+
+The proxy can automatically upgrade models to their extended-context (1M token) variants when the request is large. This is enabled by default.
+
+**Proactive upgrade:** Before sending the request, the proxy estimates the input token count. If it exceeds the configured threshold (default: 160,000 tokens), the model is upgraded to its 1M variant before the request is sent.
+
+**Reactive upgrade:** If the upstream returns a context-length error (e.g. "context length exceeded"), the proxy retries the request with the upgraded model automatically.
+
+**Beta header support:** When a client sends an `anthropic-beta: context-*` header (e.g. `context-1m-2025-04-14`), the proxy strips the header (Copilot does not understand it) and upgrades the model to the 1M variant instead.
+
+Current upgrade rules:
+
+| Source Model | Upgraded Model |
+|-------------|----------------|
+| `claude-opus-4.6` | `claude-opus-4.6-1m` |
+
+Configuration:
+
+- `contextUpgrade` (boolean, default `true`) — enable or disable auto-upgrade
+- `contextUpgradeTokenThreshold` (number, default `160000`) — token count threshold for proactive upgrade
+
+### Small-Model Routing
+
+`/v1/messages` can optionally reroute specific low-value requests to a cheaper model:
+
+- `smallModel`: the model to reroute to
+- `compactUseSmallModel`: reroute recognized compact/summarization requests
+
+The switch defaults to `false`. Routing is conservative:
+
+- the target `smallModel` must exist in Copilot's model list
+- it must preserve the original model's declared endpoint support
+- tool, thinking, and vision requests are not rerouted to a model that lacks the required capabilities
+
+## How it Works
 
 ghc-proxy sits between your tools and the GitHub Copilot API:
 
@@ -158,134 +355,9 @@ This keeps the existing chat pipeline stable while allowing newer Copilot models
 | `GET`  | `/usage` | Copilot quota / usage monitoring |
 | `GET`  | `/token` | Inspect the current Copilot token |
 
-> **Note:** The `/v1/` prefix is optional. `/chat/completions`, `/responses`, `/models`, and `/embeddings` also work.
+> **Note:** The `/v1/` prefix is optional for OpenAI-compatible endpoints (`/chat/completions`, `/responses`, `/models`, `/embeddings`). Anthropic endpoints (`/v1/messages`, `/v1/messages/count_tokens`) require the `/v1` prefix.
 
-## CLI Reference
-
-ghc-proxy uses a subcommand structure:
-
-```bash
-bunx ghc-proxy@latest start          # Start the proxy server
-bunx ghc-proxy@latest auth           # Run GitHub auth flow without starting the server
-bunx ghc-proxy@latest check-usage    # Show your Copilot usage/quota in the terminal
-bunx ghc-proxy@latest debug          # Print diagnostic info (version, paths, token status)
-```
-
-### `start` Options
-
-| Option | Alias | Default | Description |
-|--------|-------|---------|-------------|
-| `--port` | `-p` | `4141` | Port to listen on |
-| `--verbose` | `-v` | `false` | Enable verbose logging |
-| `--account-type` | `-a` | `individual` | `individual`, `business`, or `enterprise` |
-| `--rate-limit` | `-r` | -- | Minimum seconds between requests |
-| `--wait` | `-w` | `false` | Wait instead of rejecting when rate-limited |
-| `--manual` | -- | `false` | Manually approve each request |
-| `--github-token` | `-g` | -- | Pass a GitHub token directly (from `auth`) |
-| `--claude-code` | `-c` | `false` | Generate a Claude Code launch command |
-| `--show-token` | -- | `false` | Display tokens on auth and refresh |
-| `--proxy-env` | -- | `false` | Use `HTTP_PROXY`/`HTTPS_PROXY` from env (Node.js only; Bun reads proxy env natively) |
-| `--idle-timeout` | -- | `120` | Bun server idle timeout in seconds |
-| `--upstream-timeout` | -- | `300` | Upstream request timeout in seconds (0 to disable) |
-
-## Rate Limiting
-
-If you are worried about hitting Copilot rate limits:
-
-```bash
-# Enforce a 30-second cooldown between requests
-bunx ghc-proxy@latest start --rate-limit 30
-
-# Same, but queue requests instead of returning 429
-bunx ghc-proxy@latest start --rate-limit 30 --wait
-
-# Manually approve every request (useful for debugging)
-bunx ghc-proxy@latest start --manual
-```
-
-## Account Types
-
-If you have a GitHub Business or Enterprise Copilot plan, pass `--account-type`:
-
-```bash
-bunx ghc-proxy@latest start --account-type business
-bunx ghc-proxy@latest start --account-type enterprise
-```
-
-This routes requests to the correct Copilot API endpoint for your plan. See the [GitHub docs on network routing](https://docs.github.com/en/enterprise-cloud@latest/copilot/managing-copilot/managing-github-copilot-in-your-organization/managing-access-to-github-copilot-in-your-organization/managing-github-copilot-access-to-your-organizations-network#configuring-copilot-subscription-based-network-routing-for-your-enterprise-or-organization) for details.
-
-## Model Mapping
-
-When Claude Code sends a request for a model like `claude-sonnet-4.6`, the proxy maps it to an actual model available on Copilot. The mapping logic works as follows:
-
-1. If the requested model ID is known to Copilot (e.g. `gpt-4.1`, `claude-sonnet-4.5`), it is used as-is.
-2. If the model starts with `claude-opus-`, `claude-sonnet-`, or `claude-haiku-`, it falls back to a configured model.
-
-### Default Fallbacks
-
-| Prefix | Default Fallback |
-|--------|-----------------|
-| `claude-opus-*` | `claude-opus-4.6` |
-| `claude-sonnet-*` | `claude-sonnet-4.6` |
-| `claude-haiku-*` | `claude-haiku-4.5` |
-
-### Customizing Fallbacks
-
-You can override the defaults with **environment variables**:
-
-```bash
-MODEL_FALLBACK_CLAUDE_OPUS=claude-opus-4.6
-MODEL_FALLBACK_CLAUDE_SONNET=claude-sonnet-4.6
-MODEL_FALLBACK_CLAUDE_HAIKU=claude-haiku-4.5
-```
-
-Or in the proxy's **config file** (`~/.local/share/ghc-proxy/config.json`):
-
-```json
-{
-  "modelFallback": {
-    "claudeOpus": "claude-opus-4.6",
-    "claudeSonnet": "claude-sonnet-4.6",
-    "claudeHaiku": "claude-haiku-4.5"
-  }
-}
-```
-
-**Priority order:** environment variable > config.json > built-in default.
-
-> **Note:** Model fallbacks only apply to the **chat completions translation path**. The native Messages and Responses API strategies pass the model ID through to Copilot as-is.
-
-### Model Rewrites
-
-For more general model substitution, use `modelRewrites` in the config file (`~/.local/share/ghc-proxy/config.json`). Each rule maps a `from` pattern to a `to` model ID. The `from` field supports glob patterns with `*` wildcards, and the first matching rule wins.
-
-```json
-{
-  "modelRewrites": [
-    { "from": "claude-haiku-*", "to": "gpt-4.1-mini" },
-    { "from": "gpt-5.4*", "to": "gpt-5.2" }
-  ]
-}
-```
-
-Unlike model fallbacks (which only apply to the chat completions path), rewrites are applied **uniformly to all three endpoints** — `/v1/messages`, `/v1/chat/completions`, and `/v1/responses`. Target model names are normalized against Copilot's known model list using dash/dot equivalence (e.g. `gpt-4.1` matches `gpt-4-1`).
-
-Rewrites run **before** any other model policy — context upgrades, small-model routing, and strategy selection all see the rewritten model. This means a rewritten model still benefits from context-1m upgrades if the target has an upgrade rule.
-
-### Small-Model Routing
-
-`/v1/messages` can optionally reroute specific low-value requests to a cheaper model:
-
-- `smallModel`: the model to reroute to
-- `compactUseSmallModel`: reroute recognized compact/summarization requests
-
-The switch defaults to `false`. Routing is conservative:
-
-- the target `smallModel` must exist in Copilot's model list
-- it must preserve the original model's declared endpoint support
-- tool, thinking, and vision requests are not rerouted to a model that lacks the required capabilities
-
-### Responses Compatibility
+## Responses Compatibility
 
 `/v1/responses` is designed to stay close to the OpenAI wire format while making Copilot limitations explicit:
 
@@ -299,33 +371,18 @@ The switch defaults to `false`. Routing is conservative:
 - external image URLs on the Responses path fail explicitly with `400`; use `file_id` or data URL image input instead
 - official `input_file` and `item_reference` input items are modeled explicitly and validated before forwarding
 
-Live upstream verification matters here. On March 11, 2026, a full local scan across every Copilot model that advertised `/responses` support still showed two stable vision gaps:
-
-- external image URLs were rejected uniformly enough that the proxy now rejects them locally with a clearer capability error
-- the current 1x1 PNG data URL probe was rejected upstream as invalid image data even though the fixture itself decodes as a valid PNG locally
-
-The proxy does not currently disable Responses vision wholesale because the same models still advertise vision capability in Copilot model metadata. Treat Responses vision as upstream-contract-sensitive and verify it with `matrix:live` before relying on it.
-
-Additional real-upstream note: on March 11, 2026, `POST /responses` succeeded against the current enterprise Copilot endpoint, but `POST /responses/input_tokens`, `GET /responses/{id}`, `GET /responses/{id}/input_items`, and `DELETE /responses/{id}` all returned upstream `404`. The proxy exposes those routes because they are part of the official Responses surface, but current Copilot upstream support is not there yet. The same live matrix also showed `previous_response_id` returning upstream `400 previous_response_id is not supported` on the tested model.
-
-Example `config.json`:
-
-```json
-{
-  "smallModel": "gpt-4.1-mini",
-  "compactUseSmallModel": true,
-  "useFunctionApplyPatch": true,
-  "responsesApiContextManagementModels": ["gpt-5", "gpt-5-mini"],
-  "modelReasoningEfforts": {
-    "gpt-5": "high",
-    "gpt-5-mini": "medium"
-  }
-}
-```
+> See [Responses Upstream Notes](./docs/responses-upstream-notes.md) for detailed upstream compatibility observations from live testing.
 
 ## Docker
 
-Build and run:
+Pre-built images are available on GHCR:
+
+```bash
+docker pull ghcr.io/wxxb789/ghc-proxy
+docker run -p 4141:4141 ghcr.io/wxxb789/ghc-proxy
+```
+
+Or build locally:
 
 ```bash
 docker build -t ghc-proxy .
@@ -338,7 +395,7 @@ Authentication and settings are persisted in `copilot-data/config.json` so they 
 You can also pass a GitHub token via environment variable:
 
 ```bash
-docker run -p 4141:4141 -e GH_TOKEN=your_token ghc-proxy
+docker run -p 4141:4141 -e GH_TOKEN=your_token ghcr.io/wxxb789/ghc-proxy
 ```
 
 Docker Compose:
@@ -346,7 +403,7 @@ Docker Compose:
 ```yaml
 services:
   ghc-proxy:
-    build: .
+    image: ghcr.io/wxxb789/ghc-proxy
     ports:
       - '4141:4141'
     environment:
