@@ -45,12 +45,34 @@ Client Request -> Elysia Route Handler -> Zod Validation -> Execution Strategy S
 The proxy uses a per-model strategy pattern (`src/routes/messages/strategies/`) to choose the best upstream path:
 
 1. **Native Messages** — Direct `/v1/messages` passthrough when Copilot supports it
-2. **Responses Translation** — Anthropic -> Responses -> Anthropic when only `/responses` is available
-3. **Chat Completions Fallback** — Anthropic -> OpenAI Chat -> Anthropic (legacy)
+2. **Responses Translation** — Anthropic → Responses → Anthropic when only `/responses` is available
+3. **Chat Completions Fallback** — Anthropic → OpenAI Chat → Anthropic (legacy)
 
-See `docs/design/` for full architecture and design documentation, `docs/research/` for investigation notes, `docs/messages-routing-and-translation.md` for routing logic, and `docs/anthropic-translation-matrix.md` for translation coverage.
+### Model Pipeline (`/v1/messages`)
 
-**Important:** When making architectural changes, update the relevant docs in `docs/design/` to keep them in sync with the code.
+Every `/v1/messages` request runs through a 4-stage model transformation in `src/routes/messages/handler.ts`:
+
+1. **Model Rewrite** (`src/lib/model-rewrite.ts`) — User-configured glob rules (first match wins), then built-in normalization (dash/dot equivalence against Copilot's cached model list). Runs once at handler entry.
+2. **Beta Header Processing** (`handler.ts: processAnthropicBetaHeader`) — Strips `context-*` betas (Copilot doesn't understand them). If context upgrade is enabled and a matching rule exists, triggers upgrade to the 1m variant.
+3. **Model Policy** (`src/lib/request-model-policy.ts`) — Proactive context upgrade (estimated tokens > threshold → 1m variant, skipped if beta already upgraded). Compact routing (summarization requests → `smallModel` if configured and capability-compatible).
+4. **Strategy Selection** (`src/routes/messages/strategy-registry.ts`) — Picks native-messages, responses-translation, or chat-completions based on the model's `supported_endpoints`.
+
+**Error retry:** Context-length errors (HTTP 400 with pattern-matched message) trigger reactive upgrade to the 1m variant and re-execute with a fresh strategy selection.
+
+**Other routes:** `/v1/chat/completions` uses a simpler pipeline (rewrite → legacy ModelResolver fallback). `/v1/responses` uses rewrite only.
+
+### Route File Pattern
+
+Each route follows a consistent structure:
+
+```
+routes/<endpoint>/
+├── route.ts          # Elysia route definition
+├── handler.ts        # Parsing, validation, strategy dispatch
+└── strategy.ts       # ExecutionStrategy implementation(s)
+```
+
+Messages route is more complex with multiple strategies in `strategies/` subdirectory.
 
 ### Key Modules
 
@@ -78,18 +100,46 @@ See `docs/design/` for full architecture and design documentation, `docs/researc
 - **Imports:** ESNext syntax only. Use `~/*` path alias for `src/*`. Prefer index exports (`~/clients`, `~/types`, `~/translator`). Use `import type` when possible.
 - **Style:** `@antfu/eslint-config` flat config. Run `bun run lint --fix` to auto-fix.
 - **Types:** Strict TypeScript. No `any`. No unused locals/parameters. No switch fallthrough. `verbatimModuleSyntax` enabled.
+- **Naming:** `camelCase` for variables/functions, `PascalCase` for types/classes.
 - **Errors:** Explicit error classes in `src/lib/error.ts` (`HTTPError`, `throwInvalidRequestError`). No silent failures.
 - **Logging:** Use `consola` for human-readable output. For machine-readable output (e.g. `--json`), write clean data directly to stdout.
 - **Testing:** Bun's built-in test runner (`bun:test`). Tests in `tests/*.test.ts`. Use `describe`/`test`/`expect` pattern.
 - **CLI:** `start` must remain an explicit subcommand. No default command.
 - **Complexity:** Favor direct implementation over unnecessary abstractions.
+- **Runtime:** Bun is first-class. Prefer Bun-native APIs unless cross-runtime support is explicitly needed.
+
+## Testing
+
+- **Runner:** Bun built-in (`bun:test`). Place tests in `tests/`, name as `*.test.ts`.
+- **Test helpers** (`tests/helpers.ts`):
+  - Model builders: `buildModel()`, `buildGptModel()`, `buildVisionModel()`, `buildModelsResponse()`
+  - Mock factories: `mockNonStreamingResponse()`, `mockStreamingResponse()`, `mockResponses()`, `mockMessages()`
+  - State snapshot/restore: `saveStateSnapshot()` / `restoreStateSnapshot()` for test isolation
+  - SSE stream utilities: `parseSse()`, `createStream()`
+  - Default state setup: `setupDefaultTestState()`, `clearConfig()`
+- Tests use typed fixture arrays for parameterized cases.
 
 ## Pre-commit Hooks
 
 `simple-git-hooks` runs `lint-staged` which runs `bun run lint --fix` on all staged files.
 
+## Branch & PR Workflow
+
+- Feature branches with PRs; squash merge into `main`.
+
 ## Release Flow
 
 1. `bun run release:patch` (or `:minor`/`:major`) — bumps version, commits, tags
 2. `git push && git push --tags` — triggers `release-npm.yml` workflow
-3. Workflow validates tag matches `package.json` version, runs full CI, publishes to npm via GitHub OIDC Trusted Publishing
+3. Workflow validates tag matches `package.json` version, runs full CI, publishes to npm via GitHub OIDC Trusted Publishing (no long-lived npm tokens)
+
+## Design Documentation
+
+`docs/design/` contains architecture and design documents. When making architectural changes, update the relevant docs to keep them in sync with the code.
+
+Key references:
+- `docs/messages-routing-and-translation.md` — Routing logic for `/v1/messages`
+- `docs/anthropic-translation-matrix.md` — Translation coverage between protocols
+- `docs/design/model-routing.md` — Model pipeline design and context upgrade mechanics
+- `docs/design/execution-strategy.md` — Strategy pattern and error handling
+- `docs/design/translation-pipeline.md` — Full translation pipeline architecture
