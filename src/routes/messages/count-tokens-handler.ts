@@ -1,5 +1,6 @@
 import consola from 'consola'
 
+import { inferModelFamily } from '~/core/capi/profile'
 import { fromTranslationFailure, HTTPError } from '~/lib/error'
 import { state } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
@@ -8,11 +9,18 @@ import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 
 import { createAnthropicAdapter } from './shared'
 
-// Token estimation constants
-const CLAUDE_TOOL_OVERHEAD_TOKENS = 346
-const GROK_TOOL_OVERHEAD_TOKENS = 480
-const CLAUDE_ESTIMATION_FACTOR = 1.15
-const GROK_ESTIMATION_FACTOR = 1.03
+// Per-family token estimation calibration
+const TOOL_OVERHEAD_TOKENS: Record<string, number> = {
+  claude: 346, // https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview#pricing
+  grok: 480,
+  gpt: 346,
+}
+
+const ESTIMATION_FACTOR: Record<string, number> = {
+  claude: 1.15,
+  grok: 1.03,
+  gpt: 1.10,
+}
 
 export interface CountTokensCoreParams {
   body: unknown
@@ -64,22 +72,17 @@ export async function handleCountTokensCore(
       )
     }
     if (!mcpToolExist) {
-      if (anthropicPayload.model.startsWith('claude')) {
-        // https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview#pricing
-        tokenCount.input = tokenCount.input + CLAUDE_TOOL_OVERHEAD_TOKENS
-      }
-      else if (anthropicPayload.model.startsWith('grok')) {
-        tokenCount.input = tokenCount.input + GROK_TOOL_OVERHEAD_TOKENS
+      const overhead = TOOL_OVERHEAD_TOKENS[inferModelFamily(anthropicPayload.model)]
+      if (overhead) {
+        tokenCount.input = tokenCount.input + overhead
       }
     }
   }
 
   let finalTokenCount = tokenCount.input + tokenCount.output
-  if (anthropicPayload.model.startsWith('claude')) {
-    finalTokenCount = Math.round(finalTokenCount * CLAUDE_ESTIMATION_FACTOR)
-  }
-  else if (anthropicPayload.model.startsWith('grok')) {
-    finalTokenCount = Math.round(finalTokenCount * GROK_ESTIMATION_FACTOR)
+  const factor = ESTIMATION_FACTOR[inferModelFamily(anthropicPayload.model)]
+  if (factor) {
+    finalTokenCount = Math.round(finalTokenCount * factor)
   }
 
   consola.info('Token count:', finalTokenCount)

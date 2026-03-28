@@ -840,7 +840,113 @@ describe('onError — error handling', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 11. buildErrorEvent helper
+// 11. Bug fix: output_item.done after arguments.done must not throw
+// ---------------------------------------------------------------------------
+
+describe('function_call output_item.done after arguments.done', () => {
+  test('does not throw when output_item.done arrives after arguments.done has closed the block', () => {
+    const translator = new ResponsesStreamTranslator()
+    translator.onEvent(createdEvent())
+
+    // Step 1: output_item.added opens the function call block
+    translator.onEvent({
+      type: 'response.output_item.added',
+      sequence_number: 1,
+      output_index: 0,
+      item: {
+        type: 'function_call',
+        call_id: 'call_1',
+        name: 'get_weather',
+        arguments: '',
+      },
+    })
+
+    // Step 2: arguments delta
+    translator.onEvent({
+      type: 'response.function_call_arguments.delta',
+      sequence_number: 2,
+      output_index: 0,
+      item_id: 'call_1',
+      delta: '{"city":"Paris"}',
+    })
+
+    // Step 3: arguments.done closes the block
+    translator.onEvent({
+      type: 'response.function_call_arguments.done',
+      sequence_number: 3,
+      output_index: 0,
+      item_id: 'call_1',
+      name: 'get_weather',
+      arguments: '{"city":"Paris"}',
+    })
+
+    // Step 4: output_item.done arrives — this should NOT throw
+    expect(() => {
+      translator.onEvent({
+        type: 'response.output_item.done',
+        sequence_number: 4,
+        output_index: 0,
+        item: {
+          type: 'function_call',
+          id: 'fc_1',
+          call_id: 'call_1',
+          name: 'get_weather',
+          arguments: '{"city":"Paris"}',
+          status: 'completed',
+        },
+      })
+    }).not.toThrow()
+  })
+
+  test('does not duplicate content_block_stop when output_item.done follows arguments.done', () => {
+    const translator = new ResponsesStreamTranslator()
+    translator.onEvent(createdEvent())
+
+    translator.onEvent({
+      type: 'response.output_item.added',
+      sequence_number: 1,
+      output_index: 0,
+      item: {
+        type: 'function_call',
+        call_id: 'call_1',
+        name: 'get_weather',
+        arguments: '',
+      },
+    })
+
+    translator.onEvent({
+      type: 'response.function_call_arguments.done',
+      sequence_number: 2,
+      output_index: 0,
+      item_id: 'call_1',
+      name: 'get_weather',
+      arguments: '{"city":"Paris"}',
+    })
+
+    // output_item.done after close — should produce no new content block events
+    const events = translator.onEvent({
+      type: 'response.output_item.done',
+      sequence_number: 3,
+      output_index: 0,
+      item: {
+        type: 'function_call',
+        id: 'fc_1',
+        call_id: 'call_1',
+        name: 'get_weather',
+        arguments: '{"city":"Paris"}',
+        status: 'completed',
+      },
+    })
+
+    const blockStops = events.filter(e => e.type === 'content_block_stop')
+    const blockStarts = events.filter(e => e.type === 'content_block_start')
+    expect(blockStops).toHaveLength(0)
+    expect(blockStarts).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 12. buildErrorEvent helper
 // ---------------------------------------------------------------------------
 
 describe('buildErrorEvent', () => {
