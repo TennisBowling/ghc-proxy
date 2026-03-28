@@ -1,10 +1,10 @@
 import consola from 'consola'
 
+import { inferModelFamily } from '~/core/capi/profile'
 import { fromTranslationFailure, HTTPError } from '~/lib/error'
 import { state } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
 import { parseAnthropicCountTokensPayload } from '~/lib/validation'
-import { inferModelFamily } from '~/core/capi/profile'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 
 import { createAnthropicAdapter } from './shared'

@@ -823,7 +823,8 @@ describe('responses translation policy', () => {
       ],
     })
 
-    const reasoningItems = translated.input.filter(
+    const input = translated.input as Array<any>
+    const reasoningItems = input.filter(
       (item: any) => item.type === 'reasoning',
     )
     for (const item of reasoningItems) {
@@ -848,7 +849,8 @@ describe('responses translation policy', () => {
       ],
     })
 
-    const reasoningItems = translated.input.filter(
+    const input = translated.input as Array<any>
+    const reasoningItems = input.filter(
       (item: any) => item.type === 'reasoning',
     )
     expect(reasoningItems).toHaveLength(0)

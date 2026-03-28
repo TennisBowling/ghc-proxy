@@ -876,6 +876,7 @@ describe('function_call output_item.done after arguments.done', () => {
       sequence_number: 3,
       output_index: 0,
       item_id: 'call_1',
+      name: 'get_weather',
       arguments: '{"city":"Paris"}',
     })
 
@@ -918,6 +919,7 @@ describe('function_call output_item.done after arguments.done', () => {
       sequence_number: 2,
       output_index: 0,
       item_id: 'call_1',
+      name: 'get_weather',
       arguments: '{"city":"Paris"}',
     })
 
