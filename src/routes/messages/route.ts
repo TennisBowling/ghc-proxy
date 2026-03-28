@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia'
 
 import { setRequestModelMapping } from '~/lib/request-logger'
+import { disableIdleTimeout, hasStreamingFlag } from '~/lib/request-timeout'
 import { sseAdapter } from '~/lib/sse-adapter'
 import { requestGuardPlugin } from '~/routes/middleware/request-guard'
 
@@ -10,7 +11,11 @@ import { handleMessagesCore } from './handler'
 export function createMessageRoutes() {
   return new Elysia()
     .use(requestGuardPlugin)
-    .post('/messages', async function* ({ body, request }) {
+    .post('/messages', async function* ({ body, request, server }) {
+      if (hasStreamingFlag(body)) {
+        disableIdleTimeout(server, request)
+      }
+
       const { result, modelMapping } = await handleMessagesCore({
         body,
         signal: request.signal,

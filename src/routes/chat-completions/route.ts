@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia'
 
 import { setRequestModelMapping } from '~/lib/request-logger'
+import { disableIdleTimeout, hasStreamingFlag } from '~/lib/request-timeout'
 import { sseAdapter } from '~/lib/sse-adapter'
 import { requestGuardPlugin } from '~/routes/middleware/request-guard'
 
@@ -9,7 +10,11 @@ import { handleCompletionCore } from './handler'
 export function createCompletionRoutes() {
   return new Elysia()
     .use(requestGuardPlugin)
-    .post('/chat/completions', async function* ({ body, request }) {
+    .post('/chat/completions', async function* ({ body, request, server }) {
+      if (hasStreamingFlag(body)) {
+        disableIdleTimeout(server, request)
+      }
+
       const { result, modelMapping } = await handleCompletionCore({
         body,
         signal: request.signal,

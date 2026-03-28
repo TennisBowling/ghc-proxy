@@ -116,7 +116,7 @@ bunx ghc-proxy@latest debug          # Print diagnostic info (version, paths, to
 | `--claude-code` | `-c` | `false` | Generate a Claude Code launch command |
 | `--show-token` | -- | `false` | Display tokens on auth and refresh |
 | `--proxy-env` | -- | `false` | Use `HTTP_PROXY`/`HTTPS_PROXY` from env (Node.js only; Bun reads proxy env natively) |
-| `--idle-timeout` | -- | `120` | Bun server idle timeout in seconds |
+| `--idle-timeout` | -- | `120` | Bun server idle timeout in seconds (`0` disables; Bun max is `255`; streaming routes disable idle timeout automatically) |
 | `--upstream-timeout` | -- | `1800` | Upstream request timeout in seconds (0 to disable) |
 
 ## Rate Limiting

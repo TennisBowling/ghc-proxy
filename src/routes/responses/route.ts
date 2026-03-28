@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia'
 
 import { setRequestModelMapping } from '~/lib/request-logger'
+import { disableIdleTimeout, hasStreamingFlag, hasStreamingResponsesQuery } from '~/lib/request-timeout'
 import { sseAdapter } from '~/lib/sse-adapter'
 import { requestGuardPlugin } from '~/routes/middleware/request-guard'
 
@@ -15,7 +16,11 @@ import {
 export function createResponsesRoutes() {
   return new Elysia()
     .use(requestGuardPlugin)
-    .post('/responses', async function* ({ body, request }) {
+    .post('/responses', async function* ({ body, request, server }) {
+      if (hasStreamingFlag(body)) {
+        disableIdleTimeout(server, request)
+      }
+
       const { result, modelMapping } = await handleResponsesCore({
         body,
         signal: request.signal,
@@ -43,7 +48,11 @@ export function createResponsesRoutes() {
         signal: request.signal,
       })
     })
-    .get('/responses/:responseId', async ({ params, request }) => {
+    .get('/responses/:responseId', async ({ params, request, server }) => {
+      if (hasStreamingResponsesQuery(request)) {
+        disableIdleTimeout(server, request)
+      }
+
       return handleRetrieveResponseCore({
         params,
         url: request.url,
