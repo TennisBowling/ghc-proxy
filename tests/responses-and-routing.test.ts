@@ -802,6 +802,57 @@ describe('responses translation policy', () => {
       }),
     ).toThrow(TranslationFailure)
   })
+
+  test('thinking blocks without a valid signature do not produce reasoning items with empty id', () => {
+    // Simulate round-trip: upstream returned reasoning with empty id,
+    // which got encoded as "encrypted_content@" (trailing @, truthy signature,
+    // isReasoningSignature = true, but decoded id = '')
+    const translated = translateAnthropicToResponsesPayload({
+      model: 'gpt-5.4-mini',
+      max_tokens: 256,
+      messages: [
+        { role: 'user', content: 'hello' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'Let me think...', signature: 'some_encrypted@' },
+            { type: 'text', text: 'Hi there!' },
+          ],
+        },
+        { role: 'user', content: 'follow up' },
+      ],
+    })
+
+    const reasoningItems = translated.input.filter(
+      (item: any) => item.type === 'reasoning',
+    )
+    for (const item of reasoningItems) {
+      expect((item as any).id).toBeTruthy()
+    }
+  })
+
+  test('thinking blocks without signature are skipped on the Responses path', () => {
+    const translated = translateAnthropicToResponsesPayload({
+      model: 'gpt-5.4-mini',
+      max_tokens: 256,
+      messages: [
+        { role: 'user', content: 'hello' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'Some thinking' },
+            { type: 'text', text: 'Response text' },
+          ],
+        },
+        { role: 'user', content: 'next' },
+      ],
+    })
+
+    const reasoningItems = translated.input.filter(
+      (item: any) => item.type === 'reasoning',
+    )
+    expect(reasoningItems).toHaveLength(0)
+  })
 })
 
 describe('ResponsesStreamTranslator', () => {

@@ -158,9 +158,12 @@ function translateAssistantMessage(
       }
 
       if (SignatureCodec.isReasoningSignature(block.signature)) {
-        flushPendingContent(pendingContent, items, { role: 'assistant', phase: assistantPhase })
-        items.push(createReasoningContent(block))
-        continue
+        const { id } = SignatureCodec.decodeReasoning(block.signature)
+        if (id) {
+          flushPendingContent(pendingContent, items, { role: 'assistant', phase: assistantPhase })
+          items.push(createReasoningContent(block))
+          continue
+        }
       }
     }
 

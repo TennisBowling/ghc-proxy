@@ -17,3 +17,4 @@ dist/
 .sisyphus/
 /.claude/settings.local.json
 /plans
+.alma-snapshots

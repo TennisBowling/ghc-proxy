@@ -228,6 +228,11 @@ export class ResponsesStreamTranslator {
     }
 
     if (rawEvent.item.type === 'function_call') {
+      const existingState = this.state.functionCallStateByOutputIndex.get(rawEvent.output_index)
+      if (existingState?.closed) {
+        return events
+      }
+
       const blockIndex = this.openFunctionCallBlock({
         outputIndex: rawEvent.output_index,
         toolCallId: rawEvent.item.call_id,
