@@ -124,7 +124,7 @@ LiteLLM added WebSocket support in March 2026 (`github_copilot/ws/` prefix) for 
 - Zero translation loss
 
 **Chat Completions fallback path:**
-- Automatic injection of `copilot_cache_control: { type: "ephemeral" }` (Claude models only, profile-controlled)
+- Automatic injection of `copilot_cache_control: { type: \"ephemeral\" }` (all models, profile-controlled)
 - Smart injection at 3 sites: first system message, last tool, last non-user message
 - `prompt_tokens_details.cached_tokens` -> Anthropic `cache_read_input_tokens`
 - `input_tokens` automatically subtracts cached portion
@@ -154,7 +154,7 @@ Note: LiteLLM's **native Anthropic provider** (direct API) supports cache, but t
 | Cache Feature | ghc-proxy | LiteLLM (Copilot) |
 |--------------|:---------:|:-----------------:|
 | Client `cache_control` passthrough | Yes (native path) | No |
-| Automatic ephemeral cache injection | Yes (Claude only) | No |
+| Automatic ephemeral cache injection | Yes (all models) | No |
 | Smart cache site selection | 3 sites | No |
 | `cache_read_input_tokens` returned | All paths | No |
 | `cache_creation_input_tokens` returned | Yes (native path) | No |
@@ -215,7 +215,7 @@ The three are **additive** and non-overlapping. Total cost = read *0.1 + creatio
 **Correct aspects:**
 - `input_tokens = prompt_tokens - cached_tokens` — matches Anthropic semantics
 - `cache_read_input_tokens` correctly mapped
-- Cache only enabled for Claude models (profile-controlled)
+- Cache enabled for all models (profile-controlled)
 
 #### Responses Translation Path — One Known Issue
 
@@ -261,7 +261,7 @@ Test file: `tests/cache-correctness.test.ts`
 5. **Responses — non-streaming cache token mapping**: Verifies `input_tokens_details.cached_tokens` maps correctly to `cache_read_input_tokens`
 6. **Responses — streaming cache in message_start**: Verifies `message_start` event contains correct `cache_read_input_tokens` and adjusted `input_tokens`
 7. **Responses — no cache omission**: Verifies `cache_read_input_tokens` is absent when no cached tokens
-8. **Non-Claude models — no cache injection**: Verifies GPT models do not receive `copilot_cache_control` on messages or tools
+8. **All models — cache injection**: Verifies all models (including GPT) receive `copilot_cache_control` on messages and tools
 
 ---
 

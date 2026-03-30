@@ -38,8 +38,8 @@ export function inferModelFamily(model: string): CapiProfile['family'] {
 const baseProfile: CapiProfile = {
   id: 'base',
   family: 'other',
-  enableCacheControl: false,
-  includeUsageOnStream: false,
+  enableCacheControl: true,
+  includeUsageOnStream: true,
   applyThinking(request) {
     const thinking = request.thinking
     if (!thinking || thinking.type === 'disabled') {

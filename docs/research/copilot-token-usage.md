@@ -75,7 +75,7 @@ For the Chat Completions path, streaming usage requires explicit opt-in via `str
 }
 ```
 
-This is configured per CAPI profile in `src/core/capi/profile.ts`. The `claudeProfile` sets `includeUsageOnStream: true`, while the `baseProfile` sets it to `false`. This means streaming usage is automatically requested for Claude models but not for other model families.
+This is configured per CAPI profile in `src/core/capi/profile.ts`. All profiles set `includeUsageOnStream: true`, meaning streaming usage is automatically requested for all models.
 
 ## Local Token Estimation (`gpt-tokenizer`)
 

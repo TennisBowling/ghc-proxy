@@ -542,7 +542,7 @@ describe('cache correctness', () => {
   })
 
   describe('non-claude models', () => {
-    test('does not inject copilot_cache_control for GPT models', async () => {
+    test('injects copilot_cache_control for GPT models via chat-completions', async () => {
       const app = createApp()
       const calls: Array<CapturedChatCall> = []
       state.cache.models = buildModelsResponse(buildGptModel('gpt-4o'))
@@ -593,17 +593,15 @@ describe('cache correctness', () => {
       expect(calls).toHaveLength(1)
       const payload = calls[0]!.payload
 
-      // No copilot_cache_control on any message
-      for (const message of payload.messages) {
-        expect(message.copilot_cache_control).toBeUndefined()
-      }
+      // Site 1: first system/developer message
+      expect(payload.messages[0]?.copilot_cache_control).toEqual({ type: 'ephemeral' })
 
-      // No copilot_cache_control on any tool
-      if (payload.tools) {
-        for (const tool of payload.tools) {
-          expect(tool.copilot_cache_control).toBeUndefined()
-        }
-      }
+      // Site 2: last tool definition
+      expect(payload.tools?.at(-1)?.copilot_cache_control).toEqual({ type: 'ephemeral' })
+
+      // Site 3: last non-user message (the assistant message)
+      const assistantMessage = payload.messages.find(m => m.role === 'assistant')
+      expect(assistantMessage?.copilot_cache_control).toEqual({ type: 'ephemeral' })
     })
   })
 })

@@ -283,4 +283,4 @@ No translation needed. The upstream response already contains Anthropic-format u
 
 ### Streaming Usage Opt-in
 
-Streaming usage for the Chat Completions path requires `stream_options: { include_usage: true }`. This is configured per CAPI profile (`src/core/capi/profile.ts`): enabled for Claude models (`claudeProfile.includeUsageOnStream = true`), disabled for others.
+Streaming usage for the Chat Completions path requires `stream_options: { include_usage: true }`. This is configured per CAPI profile (`src/core/capi/profile.ts`): enabled for all models (`includeUsageOnStream = true` in all profiles).
