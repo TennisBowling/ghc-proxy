@@ -97,10 +97,14 @@ Those routes are still exposed by the proxy because they belong to the official 
 
 The Responses streaming translator is stateful and emits Anthropic stream events with protocol-level error frames when translation fails. Current guarantees:
 
+- `response.id` is stabilized across lifecycle events on the native `/v1/responses` passthrough boundary
+- child events that carry `item_id` are normalized structurally by `output_index` instead of relying on a fixed event-name whitelist
 - malformed upstream JSON becomes an Anthropic `error` event instead of a broken TCP stream
 - completed function-call blocks are not reopened
 - excessive whitespace-only function-call argument streams are rejected with an Anthropic `error` event
 - unfinished streams emit a terminal Anthropic `error` event instead of silently ending
+
+For the current `/v1/responses` stream identity contract, see [responses-stream-compatibility.md](/Q:/repos/ghc-proxy/docs/responses-stream-compatibility.md).
 
 ## Small-Model Routing
 
