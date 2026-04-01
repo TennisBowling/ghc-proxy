@@ -64,7 +64,7 @@ routes/responses/
 ├── handler.ts
 ├── resource-handler.ts             # GET/DELETE /responses/{id}
 ├── strategy.ts
-└── context-management.ts           # Context compaction logic
+└── context-management.ts           # Optional Responses context-management and compaction policies
 ```
 
 The embeddings route is intentionally small:

@@ -1,11 +1,12 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
 import type { ModelMappingInfo } from '~/lib/request-logger'
 
-import type { ResponsesPayload } from '~/types'
+import type { ResponseFunctionTool, ResponsesPayload, ResponseTool } from '~/types'
 import { readCapiRequestContext } from '~/core/capi'
 import { shouldUseFunctionApplyPatch } from '~/lib/config'
 import { throwInvalidRequestError } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
+import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
 import { findModelById, modelSupportsEndpoint, RESPONSES_ENDPOINT } from '~/lib/model-capabilities'
 import { applyModelRewrite } from '~/lib/model-rewrite'
 import { createCopilotClient } from '~/lib/state'
@@ -86,7 +87,30 @@ export async function handleResponsesCore(
 
 function applyResponsesToolTransforms(payload: ResponsesPayload): void {
   applyFunctionApplyPatch(payload)
+  applyFunctionToolCompatibilityDefaults(payload)
   rejectUnsupportedBuiltinTools(payload)
+}
+
+function applyFunctionToolCompatibilityDefaults(payload: ResponsesPayload): void {
+  if (!Array.isArray(payload.tools)) {
+    return
+  }
+
+  payload.tools = payload.tools.map((tool) => {
+    if (!isResponseFunctionTool(tool)) {
+      return tool
+    }
+
+    return {
+      ...tool,
+      parameters: normalizeFunctionParametersSchemaForCopilot(tool.parameters),
+      strict: tool.strict ?? true,
+    }
+  })
+}
+
+function isResponseFunctionTool(tool: ResponseTool): tool is ResponseFunctionTool {
+  return tool.type === 'function'
 }
 
 function applyFunctionApplyPatch(payload: ResponsesPayload): void {
@@ -123,6 +147,20 @@ function applyFunctionApplyPatch(payload: ResponsesPayload): void {
 }
 
 function rejectUnsupportedBuiltinTools(payload: ResponsesPayload): void {
+  if (
+    payload.tool_choice
+    && typeof payload.tool_choice === 'object'
+    && 'type' in payload.tool_choice
+    && (payload.tool_choice.type === 'web_search_preview'
+      || payload.tool_choice.type === 'web_search_preview_2025_03_11')
+  ) {
+    throwInvalidRequestError(
+      'The selected Copilot endpoint does not support the Responses web_search tool.',
+      'tool_choice',
+      'unsupported_tool_web_search',
+    )
+  }
+
   if (!Array.isArray(payload.tools)) {
     return
   }

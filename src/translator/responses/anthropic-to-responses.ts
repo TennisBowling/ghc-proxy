@@ -27,6 +27,7 @@ import type {
   ToolChoiceFunction,
   ToolChoiceOptions,
 } from '~/types'
+import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 
 import { SignatureCodec } from './signature-codec'
@@ -342,7 +343,7 @@ function convertAnthropicTools(
   return tools.map(tool => ({
     type: 'function',
     name: tool.name,
-    parameters: tool.input_schema,
+    parameters: normalizeFunctionParametersSchemaForCopilot(tool.input_schema),
     strict: false,
     ...(tool.description ? { description: tool.description } : {}),
   }))

@@ -1,29 +1,32 @@
 export interface ResponsesPayload {
+  background?: boolean | null
   model: string
   instructions?: string | null
   input?: string | Array<ResponseInputItem> | null
   conversation?: ResponseConversation | null
   previous_response_id?: string | null
   tools?: Array<ResponseTool> | null
-  tool_choice?: ToolChoiceOptions | ToolChoiceFunction | null
+  tool_choice?: ResponseToolChoice | null
   temperature?: number | null
   top_p?: number | null
   max_output_tokens?: number | null
   max_tool_calls?: number | null
   metadata?: Record<string, string> | null
   stream?: boolean | null
+  stream_options?: ResponseStreamOptions | null
   safety_identifier?: string | null
   prompt_cache_key?: string | null
+  prompt_cache_retention?: 'in-memory' | '24h' | null
   truncation?: 'auto' | 'disabled' | null
   parallel_tool_calls?: boolean | null
   store?: boolean | null
   user?: string | null
-  prompt?: string | Record<string, unknown> | null
+  prompt?: ResponsePrompt | null
   text?: ResponseTextConfig | null
   reasoning?: ResponseReasoningConfig | null
   context_management?: Array<ResponseContextManagementItem> | null
   include?: Array<ResponseIncludable> | null
-  service_tier?: string | null
+  service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority' | null
   [key: string]: unknown
 }
 
@@ -38,17 +41,56 @@ export interface ToolChoiceFunction {
   name: string
 }
 
+export interface ToolChoiceAllowedTools {
+  type: 'allowed_tools'
+  mode: 'auto' | 'required'
+  tools: Array<Record<string, unknown>>
+}
+
+export interface ToolChoiceBuiltin {
+  type: 'file_search' | 'web_search_preview' | 'web_search_preview_2025_03_11' | 'computer_use_preview' | 'code_interpreter' | 'image_generation'
+}
+
+export interface ToolChoiceMcp {
+  type: 'mcp'
+  server_label: string
+  name?: string
+}
+
+export interface ToolChoiceCustom {
+  type: 'custom'
+  name: string
+}
+
+export interface ToolChoiceApplyPatch {
+  type: 'apply_patch'
+}
+
+export interface ToolChoiceShell {
+  type: 'shell'
+}
+
+export type ResponseToolChoice = ToolChoiceOptions
+  | ToolChoiceAllowedTools
+  | ToolChoiceBuiltin
+  | ToolChoiceFunction
+  | ToolChoiceMcp
+  | ToolChoiceCustom
+  | ToolChoiceApplyPatch
+  | ToolChoiceShell
+
 export type ResponseTool = ResponseFunctionTool | Record<string, unknown>
 
 export interface ResponseFunctionTool {
   type: 'function'
   name: string
   parameters: Record<string, unknown> | null
-  strict: boolean | null
+  strict?: boolean | null
   description?: string | null
 }
 
 export type ResponseIncludable = 'file_search_call.results'
+  | 'web_search_call.results'
   | 'message.output_text.logprobs'
   | 'message.input_image.image_url'
   | 'computer_call_output.output.image_url'
@@ -59,7 +101,17 @@ export type ResponseIncludable = 'file_search_call.results'
 export type ResponseConversation = string | ResponseConversationReference
 
 export interface ResponseConversationReference {
-  id?: string | null
+  id: string
+}
+
+export interface ResponsePrompt {
+  id: string
+  variables?: Record<string, unknown>
+  version?: string
+}
+
+export interface ResponseStreamOptions {
+  include_obfuscation?: boolean | null
 }
 
 export interface ResponseTextConfig {
@@ -84,11 +136,12 @@ export interface ResponseTextFormatJsonSchema {
   name: string
   schema: Record<string, unknown>
   description?: string | null
-  strict?: boolean | null
+  strict?: boolean
 }
 
 export interface ResponseReasoningConfig {
   effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | null
+  generate_summary?: 'auto' | 'concise' | 'detailed' | null
   summary?: 'auto' | 'concise' | 'detailed' | null
 }
 
@@ -165,7 +218,7 @@ export interface ResponseInputImage {
   type: 'input_image'
   image_url?: string | null
   file_id?: string | null
-  detail: 'low' | 'high' | 'auto'
+  detail?: 'low' | 'high' | 'auto'
 }
 
 export interface ResponseInputFile {
@@ -308,12 +361,16 @@ export interface ResponseUsage {
 export type ResponseStreamEvent = ResponseCompletedEvent
   | ResponseIncompleteEvent
   | ResponseCreatedEvent
+  | ResponseContentPartAddedEvent
+  | ResponseContentPartDoneEvent
   | ResponseErrorEvent
   | ResponseFunctionCallArgumentsDeltaEvent
   | ResponseFunctionCallArgumentsDoneEvent
   | ResponseFailedEvent
   | ResponseOutputItemAddedEvent
   | ResponseOutputItemDoneEvent
+  | ResponseReasoningSummaryPartAddedEvent
+  | ResponseReasoningSummaryPartDoneEvent
   | ResponseReasoningSummaryTextDeltaEvent
   | ResponseReasoningSummaryTextDoneEvent
   | ResponseTextDeltaEvent
@@ -335,6 +392,29 @@ export interface ResponseCreatedEvent {
   type: 'response.created'
   sequence_number: number
   response: ResponsesResult
+}
+
+export interface ResponseContentPart {
+  type: string
+  [key: string]: unknown
+}
+
+export interface ResponseOutputIndexedItemEvent {
+  sequence_number: number
+  output_index: number
+  item_id: string
+}
+
+export interface ResponseContentPartAddedEvent extends ResponseOutputIndexedItemEvent {
+  type: 'response.content_part.added'
+  content_index: number
+  part: ResponseContentPart
+}
+
+export interface ResponseContentPartDoneEvent extends ResponseOutputIndexedItemEvent {
+  type: 'response.content_part.done'
+  content_index: number
+  part: ResponseContentPart
 }
 
 export interface ResponseErrorEvent {
@@ -380,6 +460,18 @@ export interface ResponseOutputItemDoneEvent {
   sequence_number: number
   output_index: number
   item: ResponseOutputItem
+}
+
+export interface ResponseReasoningSummaryPartAddedEvent extends ResponseOutputIndexedItemEvent {
+  type: 'response.reasoning_summary_part.added'
+  summary_index: number
+  part: ResponseReasoningBlock | Record<string, unknown>
+}
+
+export interface ResponseReasoningSummaryPartDoneEvent extends ResponseOutputIndexedItemEvent {
+  type: 'response.reasoning_summary_part.done'
+  summary_index: number
+  part: ResponseReasoningBlock | Record<string, unknown>
 }
 
 export interface ResponseReasoningSummaryTextDeltaEvent {

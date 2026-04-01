@@ -156,7 +156,7 @@ const responsesFunctionToolSchema = z.object({
   type: z.literal('function'),
   name: z.string().min(1),
   parameters: jsonObjectSchema.nullable().optional(),
-  strict: z.boolean().nullable().optional(),
+  strict: z.boolean().optional(),
   description: z.string().nullable().optional(),
 }).loose()
 
@@ -181,7 +181,33 @@ const responsesToolChoiceSchema = z.union([
   z.literal('auto'),
   z.literal('required'),
   z.object({
+    type: z.literal('allowed_tools'),
+    mode: z.enum(['auto', 'required']),
+    tools: z.array(jsonObjectSchema),
+  }).loose(),
+  z.object({
+    type: z.enum([
+      'file_search',
+      'web_search_preview',
+      'web_search_preview_2025_03_11',
+      'computer_use_preview',
+      'code_interpreter',
+      'image_generation',
+      'apply_patch',
+      'shell',
+    ]),
+  }).loose(),
+  z.object({
     type: z.literal('function'),
+    name: z.string().min(1),
+  }).loose(),
+  z.object({
+    type: z.literal('mcp'),
+    server_label: z.string().min(1),
+    name: z.string().min(1).optional(),
+  }).loose(),
+  z.object({
+    type: z.literal('custom'),
     name: z.string().min(1),
   }).loose(),
 ])
@@ -190,6 +216,7 @@ const responsesToolChoiceSchema = z.union([
 
 const responsesReasoningConfigSchema = z.object({
   effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).nullable().optional(),
+  generate_summary: z.enum(['auto', 'concise', 'detailed']).nullable().optional(),
   summary: z.enum(['auto', 'concise', 'detailed']).nullable().optional(),
 }).loose()
 
@@ -206,7 +233,7 @@ const responsesTextFormatJsonSchemaSchema = z.object({
   name: z.string().min(1),
   schema: jsonObjectSchema,
   description: z.string().nullable().optional(),
-  strict: z.boolean().nullable().optional(),
+  strict: z.boolean().optional(),
 }).loose()
 
 const responsesTextConfigSchema = z.object({
@@ -226,7 +253,7 @@ const responsesContextManagementSchema = z.object({
 const responsesConversationSchema = z.union([
   z.string().min(1),
   z.object({
-    id: z.string().nullable().optional(),
+    id: z.string().min(1),
   }).loose(),
 ])
 
@@ -236,6 +263,7 @@ function createResponsesPayloadSchema(options: {
   requireModel: boolean
 }) {
   return z.object({
+    background: z.boolean().nullable().optional(),
     model: options.requireModel
       ? z.string().min(1)
       : z.string().min(1).nullable().optional(),
@@ -255,19 +283,35 @@ function createResponsesPayloadSchema(options: {
     max_tool_calls: nonNegativeIntegerSchema.nullable().optional(),
     metadata: z.record(z.string(), z.string()).nullable().optional(),
     stream: z.boolean().nullable().optional(),
+    stream_options: z.object({
+      include_obfuscation: z.boolean().nullable().optional(),
+    }).loose().nullable().optional(),
     safety_identifier: z.string().nullable().optional(),
     prompt_cache_key: z.string().nullable().optional(),
+    prompt_cache_retention: z.enum(['in-memory', '24h']).nullable().optional(),
     truncation: z.enum(['auto', 'disabled']).nullable().optional(),
     parallel_tool_calls: z.boolean().nullable().optional(),
     store: z.boolean().nullable().optional(),
     user: z.string().nullable().optional(),
-    prompt: z.union([z.string().min(1), jsonObjectSchema]).nullable().optional(),
+    prompt: z.object({
+      id: z.string().min(1),
+      variables: z.record(z.string(), z.unknown()).optional(),
+      version: z.string().min(1).optional(),
+    }).loose().nullable().optional(),
     text: responsesTextConfigSchema.nullable().optional(),
     reasoning: responsesReasoningConfigSchema.nullable().optional(),
     context_management: z.array(responsesContextManagementSchema).nullable().optional(),
     include: z.array(z.string().min(1)).nullable().optional(),
-    service_tier: z.string().nullable().optional(),
+    service_tier: z.enum(['auto', 'default', 'flex', 'scale', 'priority']).nullable().optional(),
   }).loose().superRefine((payload, ctx) => {
+    if (payload.previous_response_id && payload.conversation) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'previous_response_id cannot be used together with conversation',
+        path: ['previous_response_id'],
+      })
+    }
+
     const toolChoice = payload.tool_choice
     if (
       toolChoice

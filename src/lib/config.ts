@@ -26,6 +26,8 @@ const configFileSchema = z.object({
   smallModel: z.string().optional(),
   compactUseSmallModel: z.boolean().optional(),
   useFunctionApplyPatch: z.boolean().optional(),
+  responsesApiAutoCompactInput: z.boolean().optional(),
+  responsesApiAutoContextManagement: z.boolean().optional(),
   responsesApiContextManagementModels: z.array(z.string()).optional(),
   modelReasoningEfforts: z.record(z.string(), reasoningEffortSchema).optional(),
   modelRewrites: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
@@ -42,6 +44,8 @@ let cachedConfig: ConfigFile = {}
 const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'high'
 const DEFAULT_USE_FUNCTION_APPLY_PATCH = true
 const DEFAULT_COMPACT_USE_SMALL_MODEL = false
+const DEFAULT_RESPONSES_API_AUTO_COMPACT_INPUT = false
+const DEFAULT_RESPONSES_API_AUTO_CONTEXT_MANAGEMENT = false
 const DEFAULT_CONTEXT_UPGRADE = true
 const DEFAULT_CONTEXT_UPGRADE_TOKEN_THRESHOLD = 160_000
 
@@ -118,7 +122,14 @@ export function shouldUseFunctionApplyPatch(): boolean {
   return cachedConfig.useFunctionApplyPatch ?? DEFAULT_USE_FUNCTION_APPLY_PATCH
 }
 
+export function shouldAutoCompactResponsesInput(): boolean {
+  return cachedConfig.responsesApiAutoCompactInput ?? DEFAULT_RESPONSES_API_AUTO_COMPACT_INPUT
+}
+
 export function isResponsesApiContextManagementModel(model: string): boolean {
+  if (!(cachedConfig.responsesApiAutoContextManagement ?? DEFAULT_RESPONSES_API_AUTO_CONTEXT_MANAGEMENT)) {
+    return false
+  }
   return cachedConfig.responsesApiContextManagementModels?.includes(model) ?? false
 }
 

@@ -129,6 +129,17 @@ Before rerouting, the proxy validates the target small model:
 
 If any check fails, the original model is used.
 
+## Responses Request Policies
+
+The native OpenAI-style `/v1/responses` route stays close to passthrough by default. Two optional request-mutation policies exist for Copilot `/responses` compatibility and long-session ergonomics:
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `responsesApiAutoContextManagement` | `false` | Auto-inject `context_management` for models listed in `responsesApiContextManagementModels` |
+| `responsesApiAutoCompactInput` | `false` | Auto-trim `input` to the latest `compaction` item before forwarding |
+
+These policies are both disabled by default. They only apply when explicitly enabled in config.
+
 ## CAPI Profile Selection
 
 The plan builder selects an API endpoint profile based on model family:

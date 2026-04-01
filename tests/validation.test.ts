@@ -327,7 +327,6 @@ describe('Responses payload validation', () => {
     const payload = parseResponsesPayload({
       model: 'gpt-5',
       previous_response_id: 'resp_123',
-      conversation: 'none',
       truncation: 'auto',
       max_tool_calls: 4,
       input: [{ type: 'message', role: 'user', content: 'hello' }],
@@ -345,7 +344,6 @@ describe('Responses payload validation', () => {
     })
 
     expect(payload.previous_response_id).toBe('resp_123')
-    expect(payload.conversation).toBe('none')
     expect(payload.truncation).toBe('auto')
     expect(payload.max_tool_calls).toBe(4)
     expect(payload.text).toEqual({
@@ -371,6 +369,109 @@ describe('Responses payload validation', () => {
     ).toThrow('Invalid request payload')
   })
 
+  test('accepts official responses tool_choice variants', () => {
+    const allowedToolsPayload = parseResponsesPayload({
+      model: 'gpt-5',
+      tools: [{ type: 'function', name: 'get_weather', parameters: { type: 'object' } }],
+      tool_choice: {
+        type: 'allowed_tools',
+        mode: 'required',
+        tools: [{ type: 'function', name: 'get_weather' }],
+      },
+      input: [{ type: 'message', role: 'user', content: 'hello' }],
+    })
+
+    const mcpPayload = parseResponsesPayload({
+      model: 'gpt-5',
+      tool_choice: {
+        type: 'mcp',
+        server_label: 'deepwiki',
+        name: 'search_docs',
+      },
+      input: [{ type: 'message', role: 'user', content: 'hello' }],
+    })
+
+    expect(allowedToolsPayload.tool_choice).toEqual({
+      type: 'allowed_tools',
+      mode: 'required',
+      tools: [{ type: 'function', name: 'get_weather' }],
+    })
+    expect(mcpPayload.tool_choice).toEqual({
+      type: 'mcp',
+      server_label: 'deepwiki',
+      name: 'search_docs',
+    })
+  })
+
+  test('accepts prompt objects and rejects prompt strings', () => {
+    const payload = parseResponsesPayload({
+      model: 'gpt-5',
+      prompt: {
+        id: 'pmpt_123',
+        variables: {
+          city: 'San Francisco',
+        },
+      },
+      input: [{ type: 'message', role: 'user', content: 'hello' }],
+    })
+
+    expect(payload.prompt).toEqual({
+      id: 'pmpt_123',
+      variables: {
+        city: 'San Francisco',
+      },
+    })
+
+    expect(() =>
+      parseResponsesPayload({
+        model: 'gpt-5',
+        prompt: 'pmpt_123',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+      }),
+    ).toThrow('Invalid request payload')
+  })
+
+  test('accepts official stream, caching, and service tier parameters', () => {
+    const payload = parseResponsesPayload({
+      model: 'gpt-5',
+      background: true,
+      stream: true,
+      stream_options: {
+        include_obfuscation: true,
+      },
+      prompt_cache_key: 'cache-key',
+      prompt_cache_retention: '24h',
+      service_tier: 'priority',
+      reasoning: {
+        effort: 'high',
+        generate_summary: 'concise',
+        summary: 'detailed',
+      },
+      input: [{ type: 'message', role: 'user', content: 'hello' }],
+    })
+
+    expect(payload.background).toBe(true)
+    expect(payload.stream_options).toEqual({ include_obfuscation: true })
+    expect(payload.prompt_cache_retention).toBe('24h')
+    expect(payload.service_tier).toBe('priority')
+    expect(payload.reasoning).toEqual({
+      effort: 'high',
+      generate_summary: 'concise',
+      summary: 'detailed',
+    })
+  })
+
+  test('rejects previous_response_id together with conversation', () => {
+    expect(() =>
+      parseResponsesPayload({
+        model: 'gpt-5',
+        previous_response_id: 'resp_123',
+        conversation: 'conv_123',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+      }),
+    ).toThrow('Invalid request payload')
+  })
+
   test('input_image requires image_url or file_id', () => {
     expect(() =>
       parseResponsesPayload({
@@ -380,6 +481,16 @@ describe('Responses payload validation', () => {
           role: 'user',
           content: [{ type: 'input_image', detail: 'low' }],
         }],
+      }),
+    ).toThrow('Invalid request payload')
+  })
+
+  test('conversation object form requires a non-empty id', () => {
+    expect(() =>
+      parseResponsesPayload({
+        model: 'gpt-5',
+        conversation: {},
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
       }),
     ).toThrow('Invalid request payload')
   })

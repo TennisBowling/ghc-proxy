@@ -169,7 +169,9 @@ All fields are optional. The full schema:
 | `contextUpgrade` | `boolean` | `true` | Auto-upgrade to extended-context model variants (see [Context-1M Auto-Upgrade](#context-1m-auto-upgrade)) |
 | `contextUpgradeTokenThreshold` | `number` | `160000` | Token threshold for proactive context upgrade |
 | `useFunctionApplyPatch` | `boolean` | `true` | Rewrite `apply_patch` custom tool as function tool on Responses path |
-| `responsesApiContextManagementModels` | `string[]` | -- | Models that enable Responses context compaction |
+| `responsesApiAutoCompactInput` | `boolean` | `false` | Automatically trim Responses `input` to the latest `compaction` item |
+| `responsesApiAutoContextManagement` | `boolean` | `false` | Automatically inject Responses `context_management` for selected models |
+| `responsesApiContextManagementModels` | `string[]` | -- | Models eligible for auto-injected Responses `context_management` |
 | `modelReasoningEfforts` | `Record<string, string>` | -- | Per-model reasoning effort defaults for Anthropic-to-Responses translation |
 
 Example:
@@ -188,6 +190,8 @@ Example:
   "contextUpgrade": true,
   "contextUpgradeTokenThreshold": 160000,
   "useFunctionApplyPatch": true,
+  "responsesApiAutoCompactInput": false,
+  "responsesApiAutoContextManagement": false,
   "responsesApiContextManagementModels": ["gpt-5", "gpt-5-mini"],
   "modelReasoningEfforts": {
     "gpt-5": "high",
@@ -365,11 +369,22 @@ This keeps the existing chat pipeline stable while allowing newer Copilot models
 - common official request fields such as `conversation`, `previous_response_id`, `max_tool_calls`, `truncation`, `user`, `prompt`, and `text` are now modeled explicitly instead of relying on loose passthrough alone
 - official `text.format` options are modeled explicitly, including `text`, `json_object`, and `json_schema`
 - `custom` `apply_patch` can be rewritten as a function tool when `useFunctionApplyPatch` is enabled
-- per-model Responses context compaction can be enabled with `responsesApiContextManagementModels`
+- automatic Responses `context_management` injection is disabled by default and only applies when `responsesApiAutoContextManagement` is `true` and the model matches `responsesApiContextManagementModels`
+- automatic trimming of Responses `input` to the latest `compaction` item is disabled by default and only applies when `responsesApiAutoCompactInput` is `true`
 - reasoning defaults for Anthropic -> Responses translation can be tuned with `modelReasoningEfforts`
 - known unsupported builtin tools, such as `web_search`, fail explicitly with `400` instead of being silently removed
 - external image URLs on the Responses path fail explicitly with `400`; use `file_id` or data URL image input instead
 - official `input_file` and `item_reference` input items are modeled explicitly and validated before forwarding
+
+Example opt-in configuration for these two Responses-specific policies:
+
+```json
+{
+  "responsesApiAutoContextManagement": true,
+  "responsesApiContextManagementModels": ["gpt-5"],
+  "responsesApiAutoCompactInput": true
+}
+```
 
 > See [Responses Upstream Notes](./docs/responses-upstream-notes.md) for detailed upstream compatibility observations from live testing.
 

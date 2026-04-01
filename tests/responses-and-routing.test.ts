@@ -190,7 +190,322 @@ describe('responses and routing', () => {
     expect(calls[0]?.payload.tools?.[0]).toMatchObject({
       type: 'function',
       name: 'apply_patch',
+      strict: false,
     })
+  })
+
+  test('/v1/responses defaults function tool strict to true', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses({
+      id: 'resp_1',
+      object: 'response',
+      created_at: 1,
+      model: 'gpt-4.1',
+      output: [],
+      output_text: 'ok',
+      status: 'completed',
+      usage: null,
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      metadata: null,
+      parallel_tool_calls: true,
+      temperature: null,
+      tool_choice: 'auto',
+      tools: [],
+      top_p: null,
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+        tools: [
+          {
+            type: 'function',
+            name: 'get_weather',
+            parameters: { type: 'object' },
+          },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.tools?.[0]).toMatchObject({
+      type: 'function',
+      name: 'get_weather',
+      strict: true,
+    })
+    expect(calls[0]?.payload.tools?.[0]).toMatchObject({
+      parameters: {
+        type: 'object',
+        required: [],
+      },
+    })
+  })
+
+  test('/v1/responses normalizes function parameter required arrays for Copilot', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses({
+      id: 'resp_1',
+      object: 'response',
+      created_at: 1,
+      model: 'gpt-4.1',
+      output: [],
+      output_text: 'ok',
+      status: 'completed',
+      usage: null,
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      metadata: null,
+      parallel_tool_calls: true,
+      temperature: null,
+      tool_choice: 'auto',
+      tools: [],
+      top_p: null,
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+        tools: [
+          {
+            type: 'function',
+            name: 'Bash',
+            parameters: {
+              type: 'object',
+              properties: {
+                command: { type: 'string' },
+                timeout: { type: 'number' },
+              },
+              required: ['command'],
+            },
+          },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.tools?.[0]).toMatchObject({
+      type: 'function',
+      name: 'Bash',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string' },
+          timeout: { type: 'number' },
+        },
+        required: ['command', 'timeout'],
+      },
+      strict: true,
+    })
+  })
+
+  test('/v1/responses does not auto-inject context_management by default', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    const config = getCachedConfig()
+    config.responsesApiContextManagementModels = ['gpt-4.1']
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses({
+      id: 'resp_1',
+      object: 'response',
+      created_at: 1,
+      model: 'gpt-4.1',
+      output: [],
+      output_text: 'ok',
+      status: 'completed',
+      usage: null,
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      metadata: null,
+      parallel_tool_calls: true,
+      temperature: null,
+      tool_choice: 'auto',
+      tools: [],
+      top_p: null,
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.context_management).toBeUndefined()
+  })
+
+  test('/v1/responses auto-injects context_management only when explicitly enabled', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    const config = getCachedConfig()
+    config.responsesApiAutoContextManagement = true
+    config.responsesApiContextManagementModels = ['gpt-4.1']
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', {
+      supported_endpoints: ['/responses'],
+      capabilities: {
+        family: 'gpt',
+        limits: {
+          max_context_window_tokens: 200000,
+          max_output_tokens: 8192,
+          max_prompt_tokens: 120000,
+        },
+        object: 'model_capabilities',
+        supports: {
+          tool_calls: true,
+          parallel_tool_calls: true,
+          adaptive_thinking: true,
+        },
+        tokenizer: 'o200k_base',
+        type: 'chat',
+      },
+    }))
+
+    CopilotClient.prototype.createResponses = mockResponses({
+      id: 'resp_1',
+      object: 'response',
+      created_at: 1,
+      model: 'gpt-4.1',
+      output: [],
+      output_text: 'ok',
+      status: 'completed',
+      usage: null,
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      metadata: null,
+      parallel_tool_calls: true,
+      temperature: null,
+      tool_choice: 'auto',
+      tools: [],
+      top_p: null,
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.context_management).toEqual([{
+      type: 'compaction',
+      compact_threshold: 108000,
+    }])
+  })
+
+  test('/v1/responses does not compact input by latest compaction by default', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses({
+      id: 'resp_1',
+      object: 'response',
+      created_at: 1,
+      model: 'gpt-4.1',
+      output: [],
+      output_text: 'ok',
+      status: 'completed',
+      usage: null,
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      metadata: null,
+      parallel_tool_calls: true,
+      temperature: null,
+      tool_choice: 'auto',
+      tools: [],
+      top_p: null,
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [
+          { type: 'message', role: 'user', content: 'before' },
+          { type: 'compaction', id: 'cmp_1', encrypted_content: 'enc_1' },
+          { type: 'message', role: 'user', content: 'after' },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.input).toEqual([
+      { type: 'message', role: 'user', content: 'before' },
+      { type: 'compaction', id: 'cmp_1', encrypted_content: 'enc_1' },
+      { type: 'message', role: 'user', content: 'after' },
+    ])
+  })
+
+  test('/v1/responses compacts input by latest compaction only when explicitly enabled', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    const config = getCachedConfig()
+    config.responsesApiAutoCompactInput = true
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses({
+      id: 'resp_1',
+      object: 'response',
+      created_at: 1,
+      model: 'gpt-4.1',
+      output: [],
+      output_text: 'ok',
+      status: 'completed',
+      usage: null,
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      metadata: null,
+      parallel_tool_calls: true,
+      temperature: null,
+      tool_choice: 'auto',
+      tools: [],
+      top_p: null,
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [
+          { type: 'message', role: 'user', content: 'before' },
+          { type: 'compaction', id: 'cmp_1', encrypted_content: 'enc_1' },
+          { type: 'message', role: 'user', content: 'after' },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.input).toEqual([
+      { type: 'compaction', id: 'cmp_1', encrypted_content: 'enc_1' },
+      { type: 'message', role: 'user', content: 'after' },
+    ])
   })
 
   test('/v1/responses rejects unsupported builtin tools explicitly', async () => {
@@ -236,6 +551,50 @@ describe('responses and routing', () => {
     expect(response.status).toBe(400)
     expect(json.error?.code).toBe('unsupported_tool_web_search')
     expect(json.error?.param).toBe('tools')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('/v1/responses rejects unsupported web_search tool_choice explicitly', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses({
+      id: 'resp_unused',
+      object: 'response',
+      created_at: 1,
+      model: 'gpt-4.1',
+      output: [],
+      output_text: '',
+      status: 'completed',
+      usage: null,
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      metadata: null,
+      parallel_tool_calls: true,
+      temperature: null,
+      tool_choice: 'auto',
+      tools: [],
+      top_p: null,
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+        tool_choice: { type: 'web_search_preview' },
+      }),
+    }))
+
+    const json = await response.json() as {
+      error?: { code?: string, param?: string }
+    }
+    expect(response.status).toBe(400)
+    expect(json.error?.code).toBe('unsupported_tool_web_search')
+    expect(json.error?.param).toBe('tool_choice')
     expect(calls).toHaveLength(0)
   })
 
@@ -467,6 +826,7 @@ describe('responses and routing', () => {
     expect(response.status).toBe(200)
     expect(json.content[0]).toMatchObject({ type: 'text', text: 'translated' })
     expect(calls[0]?.payload.model).toBe('gpt-5')
+    expect(calls[0]?.payload.context_management).toBeUndefined()
   })
 
   test('/v1/messages uses native messages path when model supports it', async () => {
@@ -854,6 +1214,52 @@ describe('responses translation policy', () => {
       (item: any) => item.type === 'reasoning',
     )
     expect(reasoningItems).toHaveLength(0)
+  })
+
+  test('normalizes Anthropic tool schemas for Copilot Responses compatibility', () => {
+    const translated = translateAnthropicToResponsesPayload({
+      model: 'gpt-5',
+      max_tokens: 256,
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [{
+        name: 'Bash',
+        input_schema: {
+          type: 'object',
+          properties: {
+            command: { type: 'string' },
+            timeout: { type: 'number' },
+            options: {
+              type: 'object',
+              properties: {
+                cwd: { type: 'string' },
+              },
+            },
+          },
+          required: ['command'],
+        },
+      }],
+    })
+
+    expect(translated.tools).toEqual([{
+      type: 'function',
+      name: 'Bash',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string' },
+          timeout: { type: 'number' },
+          options: {
+            type: 'object',
+            properties: {
+              cwd: { type: 'string' },
+            },
+            required: ['cwd'],
+          },
+        },
+        required: ['command', 'timeout', 'options'],
+      },
+      strict: false,
+    }])
   })
 })
 

@@ -81,7 +81,9 @@ interface ConfigFile {
 
   // Responses API
   useFunctionApplyPatch?: boolean // Rewrite apply_patch custom tool
-  responsesApiContextManagementModels?: string[] // Models with context compaction
+  responsesApiAutoCompactInput?: boolean // Auto-trim input to the latest compaction item
+  responsesApiAutoContextManagement?: boolean // Auto-inject context_management for selected models
+  responsesApiContextManagementModels?: string[] // Models eligible for auto-injected context management
 
   // Reasoning
   modelReasoningEfforts?: Record<string, ReasoningEffort> // Per-model effort defaults

@@ -131,6 +131,33 @@ export function buildModelsResponse(...models: Array<Model>): ModelsResponse {
   }
 }
 
+export function buildResponsesResult(overrides: Partial<ResponsesResult> = {}): ResponsesResult {
+  return {
+    id: 'resp_1',
+    object: 'response',
+    created_at: 1,
+    model: 'gpt-5.4',
+    output: [],
+    output_text: '',
+    status: 'in_progress',
+    usage: {
+      input_tokens: 1,
+      output_tokens: 0,
+      total_tokens: 1,
+    },
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    metadata: null,
+    parallel_tool_calls: true,
+    temperature: null,
+    tool_choice: 'auto',
+    tools: [],
+    top_p: null,
+    ...overrides,
+  }
+}
+
 // ── Elysia App Factory ──
 
 type CreateChatCompletions = typeof CopilotClient.prototype.createChatCompletions
