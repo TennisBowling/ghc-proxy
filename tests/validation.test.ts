@@ -3,12 +3,31 @@ import { describe, expect, test } from 'bun:test'
 import {
   parseAnthropicCountTokensPayload,
   parseAnthropicMessagesPayload,
+  parseEmbeddingRequest,
   parseOpenAIChatPayload,
   parseResponsesInputTokensPayload,
   parseResponsesPayload,
 } from '~/lib/validation'
 
 describe('OpenAI payload validation', () => {
+  test('accepts optional embedding fields', () => {
+    const payload = parseEmbeddingRequest({
+      model: 'text-embedding-3-small',
+      input: 'hello',
+      dimensions: 256,
+      encoding_format: 'base64',
+      user: 'user-123',
+    })
+
+    expect(payload).toEqual({
+      model: 'text-embedding-3-small',
+      input: 'hello',
+      dimensions: 256,
+      encoding_format: 'base64',
+      user: 'user-123',
+    })
+  })
+
   test('accepts validated completion options', () => {
     const payload = parseOpenAIChatPayload({
       model: 'gpt-4o',

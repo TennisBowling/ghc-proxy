@@ -1,16 +1,21 @@
-import type { CapturedChatCall } from './helpers'
+import type { CapturedChatCall, CapturedEmbeddingCall } from './helpers'
 import type { AnthropicResponse } from '~/translator'
 import type {
   ChatCompletionChunk,
   ChatCompletionResponse,
+  EmbeddingResponse,
 } from '~/types'
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { CopilotClient } from '~/clients'
+import { state } from '~/lib/state'
 import {
+  buildModel,
+  buildModelsResponse,
   createApp,
   expectCacheCheckpoints,
+  mockEmbeddings,
   mockNonStreamingResponse,
   mockStreamingResponse,
   parseSse,
@@ -20,6 +25,7 @@ import {
 } from './helpers'
 
 const originalCreateChatCompletions = CopilotClient.prototype.createChatCompletions
+const originalCreateEmbeddings = CopilotClient.prototype.createEmbeddings
 const originalState = saveStateSnapshot()
 
 beforeEach(() => {
@@ -28,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   CopilotClient.prototype.createChatCompletions = originalCreateChatCompletions
+  CopilotClient.prototype.createEmbeddings = originalCreateEmbeddings
   restoreStateSnapshot(originalState)
 })
 
@@ -429,6 +436,107 @@ describe('API smoke', () => {
     expect(response.status).toBe(400)
     expect(await response.text()).toContain('Invalid request payload')
     expect(calls).toHaveLength(0)
+  })
+
+  test('OpenAI embeddings preserves public schema while normalizing Copilot upstream input shape', async () => {
+    const app = createApp()
+    const calls: Array<CapturedEmbeddingCall> = []
+
+    CopilotClient.prototype.createEmbeddings = mockEmbeddings({
+      object: 'list',
+      model: 'text-embedding-3-small',
+      data: [
+        {
+          object: 'embedding',
+          embedding: [0.11, 0.22, 0.33],
+          index: 0,
+        },
+      ],
+      usage: {
+        prompt_tokens: 1,
+        total_tokens: 1,
+      },
+    } satisfies EmbeddingResponse, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: 'hello',
+        dimensions: 256,
+        encoding_format: 'float',
+        user: 'smoke-user',
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    const json = await response.json() as EmbeddingResponse
+
+    expect(calls).toHaveLength(1)
+    expect(json).toEqual({
+      object: 'list',
+      model: 'text-embedding-3-small',
+      data: [
+        {
+          object: 'embedding',
+          embedding: [0.11, 0.22, 0.33],
+          index: 0,
+        },
+      ],
+      usage: {
+        prompt_tokens: 1,
+        total_tokens: 1,
+      },
+    })
+  })
+
+  test('OpenAI models returns the official list schema for cached Copilot models', async () => {
+    const app = createApp()
+    state.cache.models = buildModelsResponse(
+      buildModel('claude-sonnet-4.5', {
+        vendor: 'Anthropic',
+        name: 'Claude Sonnet 4.5',
+      }),
+      buildModel('text-embedding-3-small', {
+        vendor: 'Azure OpenAI',
+        name: 'Embedding V3 small',
+      }),
+    )
+
+    const response = await app.handle(new Request('http://localhost/v1/models'))
+
+    expect(response.status).toBe(200)
+    const json = await response.json() as {
+      object: string
+      data: Array<Record<string, unknown>>
+      has_more: boolean
+    }
+
+    expect(json.object).toBe('list')
+    expect(json.has_more).toBe(false)
+    expect(json.data).toEqual([
+      {
+        id: 'claude-sonnet-4.5',
+        object: 'model',
+        type: 'model',
+        created: 0,
+        created_at: '1970-01-01T00:00:00.000Z',
+        owned_by: 'Anthropic',
+        display_name: 'Claude Sonnet 4.5',
+      },
+      {
+        id: 'text-embedding-3-small',
+        object: 'model',
+        type: 'model',
+        created: 0,
+        created_at: '1970-01-01T00:00:00.000Z',
+        owned_by: 'Azure OpenAI',
+        display_name: 'Embedding V3 small',
+      },
+    ])
   })
 
   test('OpenAI streaming preserves public reasoning_text but does not leak Copilot-private fields', async () => {

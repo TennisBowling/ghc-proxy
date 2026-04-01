@@ -4,7 +4,7 @@ This document describes the high-level architecture of ghc-proxy.
 
 ## What ghc-proxy Does
 
-ghc-proxy is a reverse-engineered API translation proxy that converts GitHub Copilot's API into OpenAI and Anthropic compatible formats. It enables tools like Claude Code, Cursor, and any OpenAI/Anthropic-speaking client to use a GitHub Copilot subscription.
+ghc-proxy is a reverse-engineered API translation proxy that converts GitHub Copilot's API into OpenAI and Anthropic compatible formats. It enables tools like Claude Code, Cursor, and any OpenAI/Anthropic-speaking client to use a GitHub Copilot subscription. Public routes stay schema-compatible with the official surface they present; Copilot-specific differences are handled inside the proxy.
 
 ## Technology Stack
 
@@ -103,7 +103,13 @@ Client Response (OpenAI / Anthropic format)
 
 5. **Streaming-first** -- All endpoints support both streaming and non-streaming responses. Streaming errors become protocol-level error events rather than broken TCP connections.
 
-6. **Favor direct implementation** -- No unnecessary abstractions. Each route handler is self-contained.
+6. **Upstream quirks stay internal** -- If Copilot expects a slightly different shape than the official client-facing API, the proxy normalizes it internally instead of pushing the incompatibility onto clients.
+
+7. **Favor direct implementation** -- No unnecessary abstractions. Each route handler is self-contained.
+
+## Endpoint Compatibility Notes
+
+`POST /v1/embeddings` remains OpenAI-compatible at the proxy boundary. When Copilot upstream expects a stricter request shape, the proxy normalizes internally before forwarding, for example converting a single string `input` into a one-element string array.
 
 ## Token Usage
 

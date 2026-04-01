@@ -151,6 +151,9 @@ export interface ImagePart {
 export interface EmbeddingRequest {
   input: string | Array<string>
   model: string
+  dimensions?: number
+  encoding_format?: 'float' | 'base64'
+  user?: string
 }
 
 export interface Embedding {

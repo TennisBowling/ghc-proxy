@@ -20,8 +20,6 @@ import type {
   ResponsesResult,
 } from '~/types'
 
-import consola from 'consola'
-
 import { events } from 'fetch-event-stream'
 
 import { copilotBaseUrl, copilotHeaders } from '~/lib/api-config'
@@ -76,7 +74,6 @@ export class CopilotClient {
     )
 
     if (!response.ok) {
-      consola.error(errorMessage, response)
       await throwUpstreamError(errorMessage, response)
     }
 

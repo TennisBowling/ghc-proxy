@@ -67,6 +67,14 @@ routes/responses/
 └── context-management.ts           # Context compaction logic
 ```
 
+The embeddings route is intentionally small:
+
+```text
+routes/embeddings/
+├── route.ts                        # OpenAI-compatible /embeddings route
+└── handler.ts                      # Validation + upstream-shape normalization
+```
+
 ### `src/translator/` -- Protocol Translation
 
 #### `translator/anthropic/` -- Anthropic <-> OpenAI
@@ -167,3 +175,11 @@ ConversationRequest
 | `responses.ts`  | OpenAI Responses API types                           |
 | `github.ts`     | GitHub API types (auth, user)                        |
 | `responses.ts`  | OpenAI Responses API types                           |
+
+## Test Coverage Layout
+
+- `tests/api-smoke.test.ts` covers public API compatibility.
+- `tests/embeddings.test.ts` covers embeddings-specific normalization and diagnostics.
+- `tests/validation.test.ts` covers request-schema validation.
+
+`tests/helpers.ts` provides shared route mounting and mock helpers for those suites.

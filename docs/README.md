@@ -30,3 +30,8 @@ Investigation notes and findings from upstream API behavior analysis.
 | [Anthropic Translation Matrix](anthropic-translation-matrix.md) | Field-level translation compatibility for the chat-completions fallback |
 | [Messages Routing and Translation](messages-routing-and-translation.md) | Per-model routing decision logic and Responses API compatibility |
 | [Responses Upstream Notes](responses-upstream-notes.md) | Live upstream compatibility observations for the Responses API path |
+
+## Testing Notes
+
+- `bun test` is part of the publish gate and includes the public API smoke suite in `tests/api-smoke.test.ts`.
+- Use route-specific tests such as `tests/embeddings.test.ts` for proxy-side normalization that should not regress.
