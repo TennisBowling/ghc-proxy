@@ -8,6 +8,8 @@ import type {
 } from '~/core/capi'
 import type { AnthropicMessagesPayload, AnthropicResponse } from '~/translator'
 import type {
+  EmbeddingRequest,
+  EmbeddingResponse,
   Model,
   ModelsResponse,
   ResponsesPayload,
@@ -21,7 +23,9 @@ import { getCachedConfig } from '~/lib/config'
 import { HTTPError } from '~/lib/error'
 import { state } from '~/lib/state'
 import { createCompletionRoutes } from '~/routes/chat-completions/route'
+import { createEmbeddingRoutes } from '~/routes/embeddings/route'
 import { createMessageRoutes } from '~/routes/messages/route'
+import { createModelRoutes } from '~/routes/models/route'
 import { createResponsesRoutes } from '~/routes/responses/route'
 
 const SSE_BLOCK_SEPARATOR_RE = /\r?\n\r?\n/
@@ -44,6 +48,10 @@ export interface CapturedResponsesCall {
 
 export interface CapturedMessagesCall {
   payload: AnthropicMessagesPayload
+}
+
+export interface CapturedEmbeddingCall {
+  payload: EmbeddingRequest
 }
 
 export interface ParsedSseEvent {
@@ -128,8 +136,11 @@ export function buildModelsResponse(...models: Array<Model>): ModelsResponse {
 type CreateChatCompletions = typeof CopilotClient.prototype.createChatCompletions
 type CreateResponses = typeof CopilotClient.prototype.createResponses
 type CreateMessages = typeof CopilotClient.prototype.createMessages
+type CreateEmbeddings = typeof CopilotClient.prototype.createEmbeddings
 
-export function createApp(routes: 'all' | 'messages' | 'responses' | 'completions' = 'all') {
+export function createApp(
+  routes: 'all' | 'messages' | 'responses' | 'completions' | 'embeddings' | 'models' = 'all',
+) {
   const app = new Elysia()
     .error({ HTTP: HTTPError })
     .onError(({ code, error }) => {
@@ -152,6 +163,8 @@ export function createApp(routes: 'all' | 'messages' | 'responses' | 'completion
     return app.group('/v1', a => a
       .use(createMessageRoutes())
       .use(createCompletionRoutes())
+      .use(createEmbeddingRoutes())
+      .use(createModelRoutes())
       .use(createResponsesRoutes()))
   }
   if (routes === 'messages') {
@@ -159,6 +172,12 @@ export function createApp(routes: 'all' | 'messages' | 'responses' | 'completion
   }
   if (routes === 'responses') {
     return app.group('/v1', a => a.use(createResponsesRoutes()))
+  }
+  if (routes === 'embeddings') {
+    return app.group('/v1', a => a.use(createEmbeddingRoutes()))
+  }
+  if (routes === 'models') {
+    return app.group('/v1', a => a.use(createModelRoutes()))
   }
   return app.group('/v1', a => a.use(createCompletionRoutes()))
 }
@@ -237,6 +256,16 @@ export function mockMessages(
     calls.push({ payload })
     return Promise.resolve(response)
   }) as CreateMessages
+}
+
+export function mockEmbeddings(
+  response: EmbeddingResponse,
+  calls: Array<CapturedEmbeddingCall>,
+): CreateEmbeddings {
+  return ((payload) => {
+    calls.push({ payload })
+    return Promise.resolve(response)
+  }) as CreateEmbeddings
 }
 
 // ── State Snapshot ──

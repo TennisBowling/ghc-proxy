@@ -20,6 +20,7 @@ bun run lint:all                     # ESLint full scan (used in CI)
 bun run typecheck                    # tsc --noEmit
 bun test                             # Run all tests (Bun native test runner)
 bun test tests/validation.test.ts    # Run a single test file
+bun test tests/api-smoke.test.ts     # Run API compatibility smoke tests
 bun run start                        # Production server (NODE_ENV=production)
 bun run matrix:live                  # End-to-end Copilot upstream compatibility (uses real quota)
 bun run smoke:packaged               # Smoke test the packaged CLI
@@ -28,7 +29,15 @@ bun run release:patch                # Bump patch, commit, tag (then git push ma
 
 **CI pipeline:** lint:all → typecheck → test → build → smoke:packaged
 
-**Validation after non-trivial changes:** `bun run lint:all && bun run typecheck && bun run build && bun test`
+**Validation after non-trivial changes:** `bun run lint:all && bun run typecheck && bun test && bun run build`
+
+## Compatibility Contract
+
+All public ghc-proxy endpoints must match the official client-facing schema they expose.
+
+- OpenAI-facing routes must stay OpenAI-compatible at the proxy boundary.
+- Anthropic-facing routes must stay Anthropic-compatible at the proxy boundary.
+- Copilot-specific quirks must be handled inside the proxy via normalization, validation, routing, or translation.
 
 ## Architecture
 
@@ -59,7 +68,7 @@ Every `/v1/messages` request runs through a 4-stage model transformation in `src
 
 **Error retry:** Context-length errors (HTTP 400 with pattern-matched message) trigger reactive upgrade to the 1m variant and re-execute with a fresh strategy selection.
 
-**Other routes:** `/v1/chat/completions` uses a simpler pipeline (rewrite → legacy ModelResolver fallback). `/v1/responses` uses rewrite only.
+**Other routes:** `/v1/chat/completions` uses a simpler pipeline (rewrite → legacy ModelResolver fallback). `/v1/responses` uses rewrite only. `/v1/embeddings` also stays OpenAI-compatible, with a small normalization step before the upstream call when Copilot expects a stricter shape.
 
 ### Key Modules
 
@@ -100,11 +109,12 @@ Every `/v1/messages` request runs through a 4-stage model transformation in `src
 - **Runner:** Bun built-in (`bun:test`). Place tests in `tests/`, name as `*.test.ts`.
 - **Test helpers** (`tests/helpers.ts`):
   - Model builders: `buildModel()`, `buildGptModel()`, `buildVisionModel()`, `buildModelsResponse()`
-  - Mock factories: `mockNonStreamingResponse()`, `mockStreamingResponse()`, `mockResponses()`, `mockMessages()`
+  - Mock factories: `mockNonStreamingResponse()`, `mockStreamingResponse()`, `mockResponses()`, `mockMessages()`, `mockEmbeddings()`
   - State snapshot/restore: `saveStateSnapshot()` / `restoreStateSnapshot()` for test isolation
   - SSE stream utilities: `parseSse()`, `createStream()`
   - Default state setup: `setupDefaultTestState()`, `clearConfig()`
 - Tests use typed fixture arrays for parameterized cases.
+- `tests/api-smoke.test.ts` is the publish gate for public schema compatibility.
 
 ## Pre-commit Hooks
 

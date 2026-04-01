@@ -34,7 +34,7 @@ class HTTPError extends Error {
 }
 ```
 
-The `forwardError()` utility extracts the upstream response body and status code, forwarding them directly.
+The upstream error helper extracts the response body and status code. If the upstream body is empty or non-JSON, the client gets the fallback proxy error message while logs still include upstream status metadata and a safe body preview.
 
 ### Streaming Errors
 
@@ -71,6 +71,8 @@ Key validations:
 - Thinking budget must be positive
 - Image sources must have valid base64 data
 - Message roles must follow protocol rules
+- Embeddings accept the official OpenAI-facing `string | string[]` input shape
+- Embedding-specific optional fields such as `dimensions`, `encoding_format`, and `user` are modeled explicitly
 
 ### Translation Policy (`src/translator/anthropic/translation-policy.ts`)
 
@@ -186,3 +188,7 @@ Request arrives
     v
 Client Response
 ```
+
+## Compatibility Normalization
+
+Validation and request shaping also preserve the public API contract when Copilot upstream differs from the exposed schema. Example: `POST /v1/embeddings` accepts OpenAI-compatible single-string input, then normalizes it to a one-element array before the upstream call.

@@ -51,6 +51,12 @@ export function fromTranslationFailure(failure: { message: string, status: numbe
   })
 }
 
+function previewBody(text: string, maxLength = 500): string {
+  return text.length > maxLength
+    ? `${text.slice(0, maxLength)}…`
+    : text
+}
+
 function isStructuredErrorPayload(
   value: unknown,
 ): value is { error: Record<string, unknown> } {
@@ -66,17 +72,24 @@ function isStructuredErrorPayload(
  * Used by CopilotClient when upstream returns a non-OK response.
  */
 export async function throwUpstreamError(message: string, response: Response): Promise<never> {
+  let rawText = ''
   let body: HTTPErrorBody
   try {
-    const text = await response.text()
-    const json = JSON.parse(text)
+    rawText = await response.text()
+    const json = JSON.parse(rawText)
     body = isStructuredErrorPayload(json)
       ? json as HTTPErrorBody
-      : { error: { message: text, type: 'upstream_error' } }
+      : { error: { message: rawText, type: 'upstream_error' } }
   }
   catch {
     body = { error: { message, type: 'upstream_error' } }
   }
-  consola.error('Upstream error:', body)
+  consola.error('Upstream error:', {
+    status: response.status,
+    statusText: response.statusText,
+    url: response.url,
+    body,
+    rawBody: rawText ? previewBody(rawText) : '<empty>',
+  })
   throw new HTTPError(response.status, body)
 }
