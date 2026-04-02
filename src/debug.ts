@@ -5,7 +5,7 @@ import os from 'node:os'
 import { defineCommand } from 'citty'
 import consola from 'consola'
 
-import { getCachedConfig } from './lib/config'
+import { getCachedConfig, readConfig } from './lib/config'
 import { PATHS } from './lib/paths'
 import { VERSION } from './lib/version'
 
@@ -64,6 +64,7 @@ async function checkConfigExists(): Promise<boolean> {
 }
 
 async function getDebugInfo(): Promise<DebugInfo> {
+  await readConfig()
   const configExists = await checkConfigExists()
 
   return {

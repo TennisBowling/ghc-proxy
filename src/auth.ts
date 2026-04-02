@@ -26,11 +26,11 @@ export async function runAuth(options: RunAuthOptions): Promise<void> {
   await ensurePaths()
   await readConfig()
 
-  // Load persisted GHE domain from config, then override with CLI arg if provided
+  // Load persisted GHE domain from config, then override with CLI arg if provided.
+  // Pass --ghe-domain "" (empty string) to explicitly clear a persisted domain.
   state.auth.gheDomain = getCachedConfig().gheDomain
-  if (options.gheDomain) {
-    const normalized = normalizeGheDomain(options.gheDomain)
-    state.auth.gheDomain = normalized
+  if (options.gheDomain !== undefined) {
+    state.auth.gheDomain = options.gheDomain ? normalizeGheDomain(options.gheDomain) : undefined
   }
   if (state.auth.gheDomain && state.config.accountType === 'individual') {
     state.config.accountType = 'enterprise'

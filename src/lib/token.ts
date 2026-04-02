@@ -109,10 +109,9 @@ export async function setupGitHubToken(
     await writeGithubToken(token)
     state.auth.githubToken = token
 
-    // Persist the current GHE domain so future runs can detect domain changes
-    if (state.auth.gheDomain) {
-      await writeConfigField('gheDomain', state.auth.gheDomain)
-    }
+    // Persist the current GHE domain so future runs can detect domain changes.
+    // Writing undefined removes the field from config (clears a previously-persisted domain).
+    await writeConfigField('gheDomain', state.auth.gheDomain)
 
     if (state.config.showToken) {
       consola.info('GitHub token:', token)
