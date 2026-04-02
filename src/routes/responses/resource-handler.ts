@@ -4,10 +4,18 @@ import type {
   ResponsesInputTokensPayload,
 } from '~/types'
 
-import { readCapiRequestContext } from '~/core/capi'
+import { normalizeResponsesRequestContext, readCapiRequestContext } from '~/core/capi/request-context'
+import { shouldUseResponsesOfficialEmulator } from '~/lib/config'
 import { throwInvalidRequestError } from '~/lib/error'
+import { findModelById } from '~/lib/model-capabilities'
 import { createCopilotClient } from '~/lib/state'
 import { parseResponsesInputTokensPayload } from '~/lib/validation'
+import {
+  deleteStoredResponseOrThrow,
+  estimateEmulatorInputTokens,
+  getStoredResponseOrThrow,
+  listStoredInputItemsOrThrow,
+} from './emulator'
 
 // --- Core request parameter interfaces ---
 
@@ -30,6 +38,9 @@ export async function handleRetrieveResponseCore(
   { params, url, headers, signal }: ResourceHandlerParams,
 ): Promise<object> {
   const responseId = requireResponseId(params.responseId)
+  if (shouldUseResponsesOfficialEmulator()) {
+    return getStoredResponseOrThrow(responseId)
+  }
   const copilotClient = createCopilotClient()
   return await copilotClient.getResponse(responseId, {
     params: getRetrieveParamsFromUrl(url),
@@ -42,6 +53,12 @@ export async function handleListResponseInputItemsCore(
   { params, url, headers, signal }: ResourceHandlerParams,
 ): Promise<object> {
   const responseId = requireResponseId(params.responseId)
+  if (shouldUseResponsesOfficialEmulator()) {
+    return listStoredInputItemsOrThrow(
+      responseId,
+      getInputItemsParamsFromUrl(url),
+    )
+  }
   const copilotClient = createCopilotClient()
   return await copilotClient.getResponseInputItems(
     responseId,
@@ -57,9 +74,27 @@ export async function handleCreateResponseInputTokensCore(
   { body, headers, signal }: ResourceHandlerBodyParams,
 ): Promise<object> {
   const payload = parseResponsesInputTokensPayload(body) as ResponsesInputTokensPayload
+  const requestContext = normalizeResponsesRequestContext(payload, headers)
+  if (shouldUseResponsesOfficialEmulator()) {
+    const model = payload.model
+    if (!model) {
+      throwInvalidRequestError(
+        'The selected model could not be resolved.',
+        'model',
+      )
+    }
+    const selectedModel = findModelById(model)
+    if (!selectedModel) {
+      throwInvalidRequestError(
+        'The selected model could not be resolved.',
+        'model',
+      )
+    }
+    return await estimateEmulatorInputTokens(payload, selectedModel)
+  }
   const copilotClient = createCopilotClient()
   return await copilotClient.createResponseInputTokens(payload, {
-    requestContext: readCapiRequestContext(headers),
+    requestContext,
     signal,
   })
 }
@@ -68,6 +103,9 @@ export async function handleDeleteResponseCore(
   { params, headers, signal }: Omit<ResourceHandlerParams, 'url'>,
 ): Promise<object> {
   const responseId = requireResponseId(params.responseId)
+  if (shouldUseResponsesOfficialEmulator()) {
+    return deleteStoredResponseOrThrow(responseId)
+  }
   const copilotClient = createCopilotClient()
   return await copilotClient.deleteResponse(responseId, {
     requestContext: readCapiRequestContext(headers),

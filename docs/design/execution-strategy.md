@@ -121,7 +121,7 @@ routes/responses/strategy.ts
 
 Passes OpenAI Responses format through to Copilot:
 
-- Applies context compaction if configured
+- Can apply context compaction only when explicitly enabled in config
 - Rewrites `apply_patch` custom tools if enabled
 - Forwards response events with minimal transformation
 

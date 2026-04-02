@@ -12,6 +12,7 @@ interface AppState {
   config: RuntimeConfig // Server runtime settings
   cache: CacheState // Cached upstream data
   rateLimit: RateLimitState // Request throttling state
+  responsesEmulator: ResponsesEmulatorState // Optional in-memory Responses emulator state
 }
 ```
 
@@ -81,7 +82,11 @@ interface ConfigFile {
 
   // Responses API
   useFunctionApplyPatch?: boolean // Rewrite apply_patch custom tool
-  responsesApiContextManagementModels?: string[] // Models with context compaction
+  responsesApiAutoCompactInput?: boolean // Auto-trim input to the latest compaction item
+  responsesApiAutoContextManagement?: boolean // Auto-inject context_management for selected models
+  responsesApiContextManagementModels?: string[] // Models eligible for auto-injected context management
+  responsesOfficialEmulator?: boolean // Opt-in local stateful /responses emulator
+  responsesOfficialEmulatorTtlSeconds?: number // In-memory TTL for emulator state
 
   // Reasoning
   modelReasoningEfforts?: Record<string, ReasoningEffort> // Per-model effort defaults
@@ -131,6 +136,16 @@ Priority: Environment variable > Config file > Default value.
 8. Start Elysia HTTP server (Bun-native adapter or @elysiajs/node fallback)
 9. (Optional) Interactive Claude Code setup
 ```
+
+## Responses Official Emulator
+
+The Responses official emulator is disabled by default. When `responsesOfficialEmulator` is `true`, the proxy keeps an in-memory, TTL-bound state store for `/v1/responses` objects and related resources.
+
+- `POST /v1/responses` still uses Copilot upstream create
+- the proxy locally persists OpenAI-style state for `previous_response_id` and `conversation`
+- `GET /v1/responses/:id`, `GET /v1/responses/:id/input_items`, `DELETE /v1/responses/:id`, and `POST /v1/responses/input_tokens` switch from passthrough to local emulator behavior
+- state expires after `responsesOfficialEmulatorTtlSeconds` seconds (default `14400`, or 4 hours)
+- `background: true` is explicitly unsupported in emulator mode
 
 ## Rate Limiting
 

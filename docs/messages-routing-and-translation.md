@@ -45,7 +45,7 @@ When a model supports `/responses` but not native `/v1/messages`, the proxy tran
 | `thinking: adaptive` with no explicit effort | Maps to `reasoning.effort = medium` | Conservative default for a request that asked for adaptive reasoning but did not fix an effort. |
 | `output_config.effort` | Maps to Responses reasoning effort | Preserves explicit caller intent. |
 | `apply_patch` custom tool | Optional shim to function tool | Controlled by `useFunctionApplyPatch`. |
-| Responses context compaction | Optional policy | Controlled per model by `responsesApiContextManagementModels`. |
+| Responses context compaction | Optional policy | Disabled by default. Requires `responsesApiAutoContextManagement: true` and a model match in `responsesApiContextManagementModels`. |
 
 ### Explicitly Unsupported on the Responses Path
 
@@ -65,6 +65,8 @@ They are rejected because the current Responses execution path cannot preserve t
 - Common official fields such as `conversation`, `previous_response_id`, `max_tool_calls`, `truncation`, `user`, `prompt`, and `text` are modeled explicitly.
 - Official `text.format` options such as `text`, `json_object`, and `json_schema` are validated explicitly.
 - `custom` `apply_patch` can be rewritten into a function tool when enabled.
+- Automatic `context_management` injection is disabled by default and only applies when explicitly enabled in config.
+- Automatic prompt slicing to the latest `compaction` item is disabled by default and only applies when explicitly enabled in config.
 - Known unsupported builtin tools, such as `web_search`, fail explicitly with `400`.
 - External `input_image.image_url` values that point at remote HTTP(S) URLs fail explicitly with `400`.
 - Official `input_file` and `item_reference` input items are modeled explicitly and validated before forwarding.
@@ -95,10 +97,14 @@ Those routes are still exposed by the proxy because they belong to the official 
 
 The Responses streaming translator is stateful and emits Anthropic stream events with protocol-level error frames when translation fails. Current guarantees:
 
+- `response.id` is stabilized across lifecycle events on the native `/v1/responses` passthrough boundary
+- child events that carry `item_id` are normalized structurally by `output_index` instead of relying on a fixed event-name whitelist
 - malformed upstream JSON becomes an Anthropic `error` event instead of a broken TCP stream
 - completed function-call blocks are not reopened
 - excessive whitespace-only function-call argument streams are rejected with an Anthropic `error` event
 - unfinished streams emit a terminal Anthropic `error` event instead of silently ending
+
+For the current `/v1/responses` stream identity contract, see [responses-stream-compatibility.md](/Q:/repos/ghc-proxy/docs/responses-stream-compatibility.md).
 
 ## Small-Model Routing
 

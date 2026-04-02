@@ -1,6 +1,7 @@
 import consola from 'consola'
 
 import { inferModelFamily } from '~/core/capi/profile'
+import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
 import { fromTranslationFailure, HTTPError } from '~/lib/error'
 import { state } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
@@ -35,6 +36,7 @@ export async function handleCountTokensCore(
 ): Promise<{ input_tokens: number }> {
   const anthropicBeta = headers.get('anthropic-beta') ?? undefined
   const anthropicPayload = parseAnthropicCountTokensPayload(body)
+  normalizeAnthropicRequestContext(anthropicPayload, headers)
 
   const adapter = createAnthropicAdapter()
 

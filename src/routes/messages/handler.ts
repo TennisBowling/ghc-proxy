@@ -2,7 +2,7 @@ import type { ExecutionResult } from '~/lib/execution-strategy'
 import type { ModelMappingInfo } from '~/lib/request-logger'
 import consola from 'consola'
 
-import { readCapiRequestContext } from '~/core/capi'
+import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
 import { shouldContextUpgrade } from '~/lib/config'
 import { findModelById } from '~/lib/model-capabilities'
 import { applyModelRewrite, getContextUpgradeTarget, isContextLengthError } from '~/lib/model-rewrite'
@@ -71,6 +71,7 @@ export async function handleMessagesCore(
   { body, signal, headers }: MessagesCoreParams,
 ): Promise<MessagesCoreResult> {
   const anthropicPayload = parseAnthropicMessagesPayload(body)
+  const requestContext = normalizeAnthropicRequestContext(anthropicPayload, headers)
   if (consola.level >= 4)
     consola.debug('Anthropic request payload:', JSON.stringify(anthropicPayload))
 
@@ -119,7 +120,7 @@ export async function handleMessagesCore(
     selectedModel,
     upstreamSignal,
     headers,
-    requestContext: readCapiRequestContext(headers),
+    requestContext,
     modelMapping,
   }
 

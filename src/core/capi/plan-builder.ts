@@ -21,7 +21,7 @@ import type {
 
 import { assertNever } from '~/lib/assert-never'
 import { selectCapiProfile } from './profile'
-import { buildCapiRequestContext, inferInitiator } from './request-context'
+import { buildCapiRequestContext, inferInitiator, resolveInitiator } from './request-context'
 
 const EPHEMERAL_CACHE_CONTROL: CopilotCacheControl = {
   type: 'ephemeral',
@@ -293,7 +293,10 @@ export function buildCapiExecutionPlan(
 ): CapiExecutionPlan {
   const resolvedModel = options.resolveModel?.(request.model) ?? request.model
   const profile = selectCapiProfile(resolvedModel)
-  const initiator = inferInitiator(request.turns)
+  const initiator = resolveInitiator(
+    inferInitiator(request.turns),
+    options.requestContext,
+  )
 
   const payload: CapiChatCompletionsPayload = {
     model: resolvedModel,

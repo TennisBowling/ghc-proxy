@@ -1,11 +1,12 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
 import type { ModelMappingInfo } from '~/lib/request-logger'
 
-import type { ResponsesPayload } from '~/types'
-import { readCapiRequestContext } from '~/core/capi'
-import { shouldUseFunctionApplyPatch } from '~/lib/config'
+import type { ResponseFunctionTool, ResponsesPayload, ResponsesResult, ResponseTool } from '~/types'
+import { normalizeResponsesRequestContext, resolveInitiator } from '~/core/capi/request-context'
+import { shouldUseFunctionApplyPatch, shouldUseResponsesOfficialEmulator } from '~/lib/config'
 import { throwInvalidRequestError } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
+import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
 import { findModelById, modelSupportsEndpoint, RESPONSES_ENDPOINT } from '~/lib/model-capabilities'
 import { applyModelRewrite } from '~/lib/model-rewrite'
 import { createCopilotClient } from '~/lib/state'
@@ -13,6 +14,7 @@ import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseResponsesPayload } from '~/lib/validation'
 
 import { applyContextManagement, compactInputByLatestCompaction, getResponsesRequestOptions } from './context-management'
+import { decorateStoredResponse, persistEmulatorResponse, prepareEmulatorRequest } from './emulator'
 import { createResponsesPassthroughStrategy } from './strategy'
 
 const HTTP_URL_RE = /^https?:\/\//i
@@ -35,15 +37,22 @@ export async function handleResponsesCore(
   { body, signal, headers }: ResponsesCoreParams,
 ): Promise<ResponsesCoreResult> {
   const payload = parseResponsesPayload(body)
+  const requestContext = normalizeResponsesRequestContext(payload, headers)
+  const emulatorMode = shouldUseResponsesOfficialEmulator()
+  const emulatorPrepared = emulatorMode
+    ? prepareEmulatorRequest(payload)
+    : undefined
 
   // Model rewrite (normalize + user rules)
-  const rewrite = applyModelRewrite(payload)
+  const rewrite = applyModelRewrite(emulatorPrepared?.upstreamPayload ?? payload)
 
-  applyResponsesToolTransforms(payload)
-  applyResponsesInputPolicies(payload)
-  compactInputByLatestCompaction(payload)
+  const effectivePayload = emulatorPrepared?.upstreamPayload ?? payload
 
-  const selectedModel = findModelById(payload.model)
+  applyResponsesToolTransforms(effectivePayload)
+  applyResponsesInputPolicies(effectivePayload)
+  compactInputByLatestCompaction(effectivePayload)
+
+  const selectedModel = findModelById(effectivePayload.model)
   if (!selectedModel) {
     throwInvalidRequestError(
       'The selected model could not be resolved.',
@@ -58,27 +67,57 @@ export async function handleResponsesCore(
   }
 
   applyContextManagement(
-    payload,
+    effectivePayload,
     selectedModel.capabilities.limits.max_prompt_tokens,
   )
 
-  const { vision, initiator } = getResponsesRequestOptions(payload)
+  const { vision, initiator } = getResponsesRequestOptions(effectivePayload)
   const upstreamSignal = createUpstreamSignalFromConfig(signal)
   const copilotClient = createCopilotClient()
+  const decorateResponse = emulatorPrepared
+    ? (response: ResponsesResult) => decorateStoredResponse(response, payload, emulatorPrepared)
+    : undefined
 
-  const strategy = createResponsesPassthroughStrategy(copilotClient, payload, {
+  const strategy = createResponsesPassthroughStrategy(copilotClient, effectivePayload, {
     vision,
-    initiator,
-    requestContext: readCapiRequestContext(headers),
+    initiator: resolveInitiator(initiator, requestContext),
+    requestContext,
     signal: upstreamSignal.signal,
+    mapResponse: decorateResponse,
+    onTerminalResponse: emulatorPrepared
+      ? (terminalResponse) => {
+          if (!emulatorPrepared?.shouldStore) {
+            return
+          }
+          persistEmulatorResponse(
+            terminalResponse,
+            emulatorPrepared.effectiveInputItems,
+          )
+        }
+      : undefined,
   })
 
   const result = await runStrategy(strategy, upstreamSignal)
 
+  if (
+    emulatorPrepared
+    && result.kind === 'json'
+  ) {
+    const emulatedResponse = decorateStoredResponse(
+      result.data as ResponsesResult,
+      payload,
+      emulatorPrepared,
+    )
+    if (emulatorPrepared.shouldStore) {
+      persistEmulatorResponse(emulatedResponse, emulatorPrepared.effectiveInputItems)
+    }
+    result.data = emulatedResponse
+  }
+
   const modelMapping: ModelMappingInfo = {
     originalModel: rewrite.originalModel,
     rewrittenModel: rewrite.model,
-    mappedModel: payload.model,
+    mappedModel: effectivePayload.model,
   }
 
   return { result, modelMapping }
@@ -86,7 +125,30 @@ export async function handleResponsesCore(
 
 function applyResponsesToolTransforms(payload: ResponsesPayload): void {
   applyFunctionApplyPatch(payload)
+  applyFunctionToolCompatibilityDefaults(payload)
   rejectUnsupportedBuiltinTools(payload)
+}
+
+function applyFunctionToolCompatibilityDefaults(payload: ResponsesPayload): void {
+  if (!Array.isArray(payload.tools)) {
+    return
+  }
+
+  payload.tools = payload.tools.map((tool) => {
+    if (!isResponseFunctionTool(tool)) {
+      return tool
+    }
+
+    return {
+      ...tool,
+      parameters: normalizeFunctionParametersSchemaForCopilot(tool.parameters),
+      strict: tool.strict ?? true,
+    }
+  })
+}
+
+function isResponseFunctionTool(tool: ResponseTool): tool is ResponseFunctionTool {
+  return tool.type === 'function'
 }
 
 function applyFunctionApplyPatch(payload: ResponsesPayload): void {
@@ -123,6 +185,20 @@ function applyFunctionApplyPatch(payload: ResponsesPayload): void {
 }
 
 function rejectUnsupportedBuiltinTools(payload: ResponsesPayload): void {
+  if (
+    payload.tool_choice
+    && typeof payload.tool_choice === 'object'
+    && 'type' in payload.tool_choice
+    && (payload.tool_choice.type === 'web_search_preview'
+      || payload.tool_choice.type === 'web_search_preview_2025_03_11')
+  ) {
+    throwInvalidRequestError(
+      'The selected Copilot endpoint does not support the Responses web_search tool.',
+      'tool_choice',
+      'unsupported_tool_web_search',
+    )
+  }
+
   if (!Array.isArray(payload.tools)) {
     return
   }

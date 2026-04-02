@@ -169,7 +169,11 @@ All fields are optional. The full schema:
 | `contextUpgrade` | `boolean` | `true` | Auto-upgrade to extended-context model variants (see [Context-1M Auto-Upgrade](#context-1m-auto-upgrade)) |
 | `contextUpgradeTokenThreshold` | `number` | `160000` | Token threshold for proactive context upgrade |
 | `useFunctionApplyPatch` | `boolean` | `true` | Rewrite `apply_patch` custom tool as function tool on Responses path |
-| `responsesApiContextManagementModels` | `string[]` | -- | Models that enable Responses context compaction |
+| `responsesApiAutoCompactInput` | `boolean` | `false` | Automatically trim Responses `input` to the latest `compaction` item |
+| `responsesApiAutoContextManagement` | `boolean` | `false` | Automatically inject Responses `context_management` for selected models |
+| `responsesApiContextManagementModels` | `string[]` | -- | Models eligible for auto-injected Responses `context_management` |
+| `responsesOfficialEmulator` | `boolean` | `false` | Enable local OpenAI-style Responses state emulation for `previous_response_id`, `conversation`, retrieve, input_items, delete, and input_tokens |
+| `responsesOfficialEmulatorTtlSeconds` | `number` | `14400` | In-memory TTL for locally emulated Responses state |
 | `modelReasoningEfforts` | `Record<string, string>` | -- | Per-model reasoning effort defaults for Anthropic-to-Responses translation |
 
 Example:
@@ -188,7 +192,11 @@ Example:
   "contextUpgrade": true,
   "contextUpgradeTokenThreshold": 160000,
   "useFunctionApplyPatch": true,
+  "responsesApiAutoCompactInput": false,
+  "responsesApiAutoContextManagement": false,
   "responsesApiContextManagementModels": ["gpt-5", "gpt-5-mini"],
+  "responsesOfficialEmulator": false,
+  "responsesOfficialEmulatorTtlSeconds": 14400,
   "modelReasoningEfforts": {
     "gpt-5": "high",
     "gpt-5-mini": "medium"
@@ -315,10 +323,10 @@ Incoming requests hit an [Elysia](https://elysiajs.com/) server. `chat/completio
 
 - `POST /v1/chat/completions`: OpenAI Chat Completions -> shared planning pipeline -> Copilot `/chat/completions`
 - `POST /v1/responses`: OpenAI Responses create -> native Responses handler -> Copilot `/responses`
-- `POST /v1/responses/input_tokens`: Responses input-token counting passthrough when the upstream supports it
-- `GET /v1/responses/:responseId`: Responses retrieve passthrough when the upstream supports it
-- `GET /v1/responses/:responseId/input_items`: Responses input-items passthrough when the upstream supports it
-- `DELETE /v1/responses/:responseId`: Responses delete passthrough when the upstream supports it
+- `POST /v1/responses/input_tokens`: Responses input-token counting passthrough by default, or local estimation in official emulator mode
+- `GET /v1/responses/:responseId`: Responses retrieve passthrough by default, or local retrieval in official emulator mode
+- `GET /v1/responses/:responseId/input_items`: Responses input-items passthrough by default, or local retrieval in official emulator mode
+- `DELETE /v1/responses/:responseId`: Responses delete passthrough by default, or local deletion in official emulator mode
 - `POST /v1/messages`: Anthropic Messages -> choose the best available upstream path for the selected model:
   - native Copilot `/v1/messages` when supported
   - Anthropic -> Responses -> Anthropic translation when the model only supports `/responses`
@@ -334,10 +342,10 @@ This keeps the existing chat pipeline stable while allowing newer Copilot models
 |--------|------|-------------|
 | `POST` | `/v1/chat/completions` | Chat completions (streaming and non-streaming) |
 | `POST` | `/v1/responses` | Create a Responses API response |
-| `POST` | `/v1/responses/input_tokens` | Count Responses input tokens when supported by Copilot upstream |
-| `GET` | `/v1/responses/:responseId` | Retrieve one response when supported by Copilot upstream |
-| `GET` | `/v1/responses/:responseId/input_items` | Retrieve response input items when supported by Copilot upstream |
-| `DELETE` | `/v1/responses/:responseId` | Delete one response when supported by Copilot upstream |
+| `POST` | `/v1/responses/input_tokens` | Count Responses input tokens via upstream passthrough or the local official emulator |
+| `GET` | `/v1/responses/:responseId` | Retrieve one response via upstream passthrough or the local official emulator |
+| `GET` | `/v1/responses/:responseId/input_items` | Retrieve response input items via upstream passthrough or the local official emulator |
+| `DELETE` | `/v1/responses/:responseId` | Delete one response via upstream passthrough or the local official emulator |
 | `GET`  | `/v1/models` | List available models |
 | `POST` | `/v1/embeddings` | Generate embeddings |
 
@@ -364,12 +372,28 @@ This keeps the existing chat pipeline stable while allowing newer Copilot models
 - requests are validated before any mutation
 - common official request fields such as `conversation`, `previous_response_id`, `max_tool_calls`, `truncation`, `user`, `prompt`, and `text` are now modeled explicitly instead of relying on loose passthrough alone
 - official `text.format` options are modeled explicitly, including `text`, `json_object`, and `json_schema`
+- an opt-in `responsesOfficialEmulator` mode adds in-memory OpenAI-style state for `previous_response_id`, `conversation`, `GET /responses/{id}`, `GET /responses/{id}/input_items`, `DELETE /responses/{id}`, and `POST /responses/input_tokens`
+- emulator state is memory-only and expires after `responsesOfficialEmulatorTtlSeconds` (default `14400`, or 4 hours)
+- `background: true` is rejected explicitly while emulator mode is enabled
 - `custom` `apply_patch` can be rewritten as a function tool when `useFunctionApplyPatch` is enabled
-- per-model Responses context compaction can be enabled with `responsesApiContextManagementModels`
+- automatic Responses `context_management` injection is disabled by default and only applies when `responsesApiAutoContextManagement` is `true` and the model matches `responsesApiContextManagementModels`
+- automatic trimming of Responses `input` to the latest `compaction` item is disabled by default and only applies when `responsesApiAutoCompactInput` is `true`
 - reasoning defaults for Anthropic -> Responses translation can be tuned with `modelReasoningEfforts`
 - known unsupported builtin tools, such as `web_search`, fail explicitly with `400` instead of being silently removed
 - external image URLs on the Responses path fail explicitly with `400`; use `file_id` or data URL image input instead
 - official `input_file` and `item_reference` input items are modeled explicitly and validated before forwarding
+
+Example opt-in configuration for these two Responses-specific policies:
+
+```json
+{
+  "responsesApiAutoContextManagement": true,
+  "responsesApiContextManagementModels": ["gpt-5"],
+  "responsesApiAutoCompactInput": true,
+  "responsesOfficialEmulator": true,
+  "responsesOfficialEmulatorTtlSeconds": 14400
+}
+```
 
 > See [Responses Upstream Notes](./docs/responses-upstream-notes.md) for detailed upstream compatibility observations from live testing.
 

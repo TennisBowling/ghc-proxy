@@ -44,6 +44,12 @@ export interface CapturedChatCall {
 
 export interface CapturedResponsesCall {
   payload: ResponsesPayload
+  options?: {
+    signal?: AbortSignal
+    initiator?: 'user' | 'agent'
+    vision?: boolean
+    requestContext?: Partial<CapiRequestContext>
+  }
 }
 
 export interface CapturedMessagesCall {
@@ -128,6 +134,33 @@ export function buildModelsResponse(...models: Array<Model>): ModelsResponse {
   return {
     object: 'list',
     data: models,
+  }
+}
+
+export function buildResponsesResult(overrides: Partial<ResponsesResult> = {}): ResponsesResult {
+  return {
+    id: 'resp_1',
+    object: 'response',
+    created_at: 1,
+    model: 'gpt-5.4',
+    output: [],
+    output_text: '',
+    status: 'in_progress',
+    usage: {
+      input_tokens: 1,
+      output_tokens: 0,
+      total_tokens: 1,
+    },
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    metadata: null,
+    parallel_tool_calls: true,
+    temperature: null,
+    tool_choice: 'auto',
+    tools: [],
+    top_p: null,
+    ...overrides,
   }
 }
 
@@ -242,8 +275,8 @@ export function mockResponses(
   response: ResponsesResult | AsyncGenerator<ServerSentEventMessage, void, unknown>,
   calls: Array<CapturedResponsesCall>,
 ): CreateResponses {
-  return ((payload) => {
-    calls.push({ payload })
+  return ((payload, options) => {
+    calls.push({ payload, options })
     return Promise.resolve(response)
   }) as CreateResponses
 }
@@ -291,6 +324,7 @@ export function restoreStateSnapshot(snapshot: StateSnapshot) {
   state.config = { ...snapshot.config }
   state.cache = { ...snapshot.cache }
   state.rateLimit = { ...snapshot.rateLimit }
+  state.responsesEmulator.clear()
 }
 
 // ── Cache Checkpoint Assertions ──
@@ -317,6 +351,7 @@ export function setupDefaultTestState() {
   state.config.rateLimitSeconds = undefined
   state.config.rateLimitWait = false
   state.rateLimit.nextAvailableAt = undefined
+  state.responsesEmulator.clear()
 }
 
 // ── Config Helpers ──

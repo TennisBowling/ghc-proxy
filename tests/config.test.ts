@@ -6,7 +6,11 @@ import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import {
   getCachedConfig,
+  getResponsesOfficialEmulatorTtlSeconds,
+  isResponsesApiContextManagementModel,
   readConfig,
+  shouldAutoCompactResponsesInput,
+  shouldUseResponsesOfficialEmulator,
   writeConfigField,
 } from '../src/lib/config'
 
@@ -109,5 +113,30 @@ describe('config module', () => {
 
     await writeConfigField('githubToken', 'updated-token')
     expect(getCachedConfig()).toEqual({ githubToken: 'updated-token' })
+  })
+
+  test('responses auto-compaction and auto-context-management are disabled by default', async () => {
+    expect(shouldAutoCompactResponsesInput()).toBe(false)
+    expect(isResponsesApiContextManagementModel('gpt-5')).toBe(false)
+    expect(shouldUseResponsesOfficialEmulator()).toBe(false)
+    expect(getResponsesOfficialEmulatorTtlSeconds()).toBe(14_400)
+  })
+
+  test('responses auto-compaction and auto-context-management require explicit opt-in', async () => {
+    await fs.writeFile(tempConfigPath, JSON.stringify({
+      responsesApiAutoCompactInput: true,
+      responsesApiAutoContextManagement: true,
+      responsesApiContextManagementModels: ['gpt-5'],
+      responsesOfficialEmulator: true,
+      responsesOfficialEmulatorTtlSeconds: 60,
+    }))
+
+    await readConfig()
+
+    expect(shouldAutoCompactResponsesInput()).toBe(true)
+    expect(isResponsesApiContextManagementModel('gpt-5')).toBe(true)
+    expect(isResponsesApiContextManagementModel('gpt-4.1')).toBe(false)
+    expect(shouldUseResponsesOfficialEmulator()).toBe(true)
+    expect(getResponsesOfficialEmulatorTtlSeconds()).toBe(60)
   })
 })
