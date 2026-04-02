@@ -2,6 +2,51 @@
 
 Tracked items for future work. Items are roughly ordered by priority.
 
+## Best Practices Improvements
+
+### High Priority
+
+- [ ] **Add Dependabot or Renovate for automated dependency updates**
+  - No `.github/dependabot.yml` or renovate config exists
+  - Security patches currently require manual tracking
+  - Recommendation: add Dependabot with weekly schedule for npm ecosystem
+
+- [ ] **Add test coverage reporting**
+  - Configure `--coverage` in test script and CI pipeline
+  - Set coverage thresholds (e.g., 80%) as CI gate
+  - Gives visibility into which modules lack tests
+
+- [ ] **Add `"sideEffects": false` to `package.json`**
+  - Enables tree-shaking optimizations in bundler
+  - Codebase appears side-effect-free at module scope
+
+### Medium Priority
+
+- [ ] **Expand test coverage for under-tested modules**
+  - Clients (`CopilotClient`, `GitHubClient`, `VSCodeClient`) — only mocked, never directly tested
+  - Rate limiting (`src/lib/rate-limit.ts`) — no dedicated tests
+  - Request guard middleware (`src/routes/request-guard.ts`) — tested indirectly through routes only
+  - Request logger (`src/lib/request-logger.ts`) — no isolated tests
+  - Concurrent request / race condition scenarios
+
+- [ ] **Reduce route registration duplication in `server.ts`**
+  - Root-level and `/v1`-prefixed routes registered separately with identical call lists
+  - Could extract shared route array to avoid drift
+
+- [ ] **Refine `lint-staged` rules**
+  - Current config: `"*": "bun run lint --fix"` runs linter on all file types
+  - Could scope to `"*.ts"` for faster staged-file processing
+
+### Low Priority
+
+- [ ] **Handle bare `catch` blocks in error parsing**
+  - `src/lib/error.ts` `throwUpstreamError()` silently swallows JSON parse failures
+  - Consider logging parse failures at debug level
+
+- [ ] **Reduce emulator branching duplication**
+  - `src/routes/responses/resource-handler.ts` has repeated `if (shouldUseResponsesOfficialEmulator())` checks
+  - Could consolidate with strategy pattern or early return
+
 ## Research
 
 - [ ] **Evaluate `ai-tokenizer` as a replacement for `gpt-tokenizer`**
