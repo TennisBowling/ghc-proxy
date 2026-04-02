@@ -28,6 +28,8 @@ await mock.module('../src/clients/vscode-client', () => ({
 
 await mock.module('../src/clients/github-client', () => ({
   GitHubClient: class {
+    constructor(_auth?: unknown, _config?: unknown, _deps?: { fetch?: typeof fetch }) {}
+
     getGitHubUser = () => Promise.resolve({ login: 'test-user' })
     getDeviceCode = () =>
       Promise.resolve({
@@ -41,6 +43,9 @@ await mock.module('../src/clients/github-client', () => ({
     pollAccessToken = mockPollAccessToken
     getCopilotToken = () =>
       Promise.resolve({ token: 'copilot-token', refresh_in: 1800 })
+
+    getCopilotUsage = () =>
+      Promise.resolve({ seat_breakdown: {}, total_suggestions_count: 0 })
   },
 }))
 

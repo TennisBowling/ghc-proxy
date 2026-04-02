@@ -1,7 +1,11 @@
 import type { ClientAuth, ClientConfig } from '../src/clients/types'
 
 import { describe, expect, mock, test } from 'bun:test'
-import { GitHubClient } from '../src/clients/github-client'
+
+// Use import.meta.resolve to get the absolute file URL, bypassing Bun's mock.module registry.
+// This ensures we always test the real GitHubClient even if another test file
+// (e.g. token-file-removal.test.ts) has called mock.module('../src/clients/github-client').
+const { GitHubClient } = await import(import.meta.resolve('../src/clients/github-client')) as typeof import('../src/clients/github-client')
 
 // Minimal mock response factory
 function okJson(data: unknown): Response {
