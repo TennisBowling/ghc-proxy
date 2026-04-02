@@ -26,19 +26,24 @@ const gheConfig: ClientConfig = {
   githubApiBaseUrl: 'https://api.company.ghe.com',
 }
 
-function createMockFetch(response: unknown) {
-  return mock(() => Promise.resolve(okJson(response))) as unknown as typeof fetch
-}
-
-function capturedUrl(mockFn: typeof fetch): string {
-  const calls = (mockFn as unknown as ReturnType<typeof mock>).mock.calls
-  return String(calls[0]?.[0] ?? '')
+/**
+ * Creates a fetch spy that:
+ *  - passes a plain function typed as `typeof fetch` to GitHubClient (no mock proxy cast)
+ *  - records every call URL via a Bun mock so we can assert on it
+ */
+function createFetchSpy(response: unknown) {
+  const recorder = mock((_url: string) => _url)
+  const fetchImpl = (input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => {
+    recorder(String(input))
+    return Promise.resolve(okJson(response))
+  }
+  return { fetchImpl: fetchImpl as unknown as typeof fetch, recorder }
 }
 
 describe('GitHubClient URL routing', () => {
   describe('getDeviceCode()', () => {
     test('default config uses https://github.com', async () => {
-      const mockFetch = createMockFetch({
+      const { fetchImpl, recorder } = createFetchSpy({
         device_code: 'dc',
         user_code: 'ABCD-1234',
         verification_uri: 'https://github.com/login/device',
@@ -46,14 +51,14 @@ describe('GitHubClient URL routing', () => {
         interval: 5,
       })
 
-      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: fetchImpl })
       await client.getDeviceCode()
 
-      expect(capturedUrl(mockFetch)).toBe('https://github.com/login/device/code')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://github.com/login/device/code')
     })
 
     test('GHE config routes to GHE base URL', async () => {
-      const mockFetch = createMockFetch({
+      const { fetchImpl, recorder } = createFetchSpy({
         device_code: 'dc',
         user_code: 'ABCD-1234',
         verification_uri: 'https://company.ghe.com/login/device',
@@ -61,10 +66,10 @@ describe('GitHubClient URL routing', () => {
         interval: 5,
       })
 
-      const client = new GitHubClient(baseAuth, gheConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, gheConfig, { fetch: fetchImpl })
       await client.getDeviceCode()
 
-      expect(capturedUrl(mockFetch)).toBe('https://company.ghe.com/login/device/code')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://company.ghe.com/login/device/code')
     })
   })
 
@@ -78,83 +83,83 @@ describe('GitHubClient URL routing', () => {
     }
 
     test('default config polls https://github.com', async () => {
-      const mockFetch = createMockFetch({ access_token: 'test-token', token_type: 'bearer', scope: '' })
+      const { fetchImpl, recorder } = createFetchSpy({ access_token: 'test-token', token_type: 'bearer', scope: '' })
 
-      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: fetchImpl })
       const token = await client.pollAccessToken(deviceCode)
 
-      expect(capturedUrl(mockFetch)).toBe('https://github.com/login/oauth/access_token')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://github.com/login/oauth/access_token')
       expect(token).toBe('test-token')
     })
 
     test('GHE config polls GHE base URL', async () => {
-      const mockFetch = createMockFetch({ access_token: 'ghe-token', token_type: 'bearer', scope: '' })
+      const { fetchImpl, recorder } = createFetchSpy({ access_token: 'ghe-token', token_type: 'bearer', scope: '' })
 
-      const client = new GitHubClient(baseAuth, gheConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, gheConfig, { fetch: fetchImpl })
       const token = await client.pollAccessToken(deviceCode)
 
-      expect(capturedUrl(mockFetch)).toBe('https://company.ghe.com/login/oauth/access_token')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://company.ghe.com/login/oauth/access_token')
       expect(token).toBe('ghe-token')
     })
   })
 
   describe('getGitHubUser()', () => {
     test('default config uses https://api.github.com', async () => {
-      const mockFetch = createMockFetch({ login: 'testuser', id: 1 })
+      const { fetchImpl, recorder } = createFetchSpy({ login: 'testuser', id: 1 })
 
-      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: fetchImpl })
       await client.getGitHubUser()
 
-      expect(capturedUrl(mockFetch)).toBe('https://api.github.com/user')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://api.github.com/user')
     })
 
     test('GHE config routes to GHE API base URL', async () => {
-      const mockFetch = createMockFetch({ login: 'gheuser', id: 2 })
+      const { fetchImpl, recorder } = createFetchSpy({ login: 'gheuser', id: 2 })
 
-      const client = new GitHubClient(baseAuth, gheConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, gheConfig, { fetch: fetchImpl })
       await client.getGitHubUser()
 
-      expect(capturedUrl(mockFetch)).toBe('https://api.company.ghe.com/user')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://api.company.ghe.com/user')
     })
   })
 
   describe('getCopilotToken()', () => {
     test('default config uses https://api.github.com', async () => {
-      const mockFetch = createMockFetch({ token: 'copilot-tok', refresh_in: 1800 })
+      const { fetchImpl, recorder } = createFetchSpy({ token: 'copilot-tok', refresh_in: 1800 })
 
-      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: fetchImpl })
       await client.getCopilotToken()
 
-      expect(capturedUrl(mockFetch)).toBe('https://api.github.com/copilot_internal/v2/token')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://api.github.com/copilot_internal/v2/token')
     })
 
     test('GHE config routes to GHE API base URL', async () => {
-      const mockFetch = createMockFetch({ token: 'ghe-copilot-tok', refresh_in: 1800 })
+      const { fetchImpl, recorder } = createFetchSpy({ token: 'ghe-copilot-tok', refresh_in: 1800 })
 
-      const client = new GitHubClient(baseAuth, gheConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, gheConfig, { fetch: fetchImpl })
       await client.getCopilotToken()
 
-      expect(capturedUrl(mockFetch)).toBe('https://api.company.ghe.com/copilot_internal/v2/token')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://api.company.ghe.com/copilot_internal/v2/token')
     })
   })
 
   describe('getCopilotUsage()', () => {
     test('default config uses https://api.github.com', async () => {
-      const mockFetch = createMockFetch({ seat_breakdown: {}, total_suggestions_count: 0 })
+      const { fetchImpl, recorder } = createFetchSpy({ seat_breakdown: {}, total_suggestions_count: 0 })
 
-      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, defaultConfig, { fetch: fetchImpl })
       await client.getCopilotUsage()
 
-      expect(capturedUrl(mockFetch)).toBe('https://api.github.com/copilot_internal/user')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://api.github.com/copilot_internal/user')
     })
 
     test('GHE config routes to GHE API base URL', async () => {
-      const mockFetch = createMockFetch({ seat_breakdown: {}, total_suggestions_count: 5 })
+      const { fetchImpl, recorder } = createFetchSpy({ seat_breakdown: {}, total_suggestions_count: 5 })
 
-      const client = new GitHubClient(baseAuth, gheConfig, { fetch: mockFetch })
+      const client = new GitHubClient(baseAuth, gheConfig, { fetch: fetchImpl })
       await client.getCopilotUsage()
 
-      expect(capturedUrl(mockFetch)).toBe('https://api.company.ghe.com/copilot_internal/user')
+      expect(recorder.mock.calls[0]?.[0]).toBe('https://api.company.ghe.com/copilot_internal/user')
     })
   })
 })
