@@ -32,8 +32,8 @@ function cloneValue<T>(value: T): T {
 export interface PreparedEmulatorRequest {
   upstreamPayload: ResponsesPayload
   effectiveInputItems: Array<ResponseInputItem>
+  conversation: ResponseConversation
   previousResponseId?: string
-  conversation?: ResponseConversation
   shouldStore: boolean
 }
 
@@ -62,9 +62,10 @@ export function prepareEmulatorRequest(payload: ResponsesPayload): PreparedEmula
   const normalizedCurrentInput = normalizeResponsesInput(payload.input)
   const {
     continuationSourceResponseId,
-    conversation,
+    conversation: resolvedConversation,
     previousResponse,
   } = resolveContinuation(payload)
+  const conversation = resolvedConversation ?? createConversationRef()
   const continuationHistory = continuationSourceResponseId
     ? buildContinuationHistory(continuationSourceResponseId)
     : []
@@ -94,12 +95,10 @@ export function decorateStoredResponse(
   requestPayload: ResponsesPayload,
   prepared: PreparedEmulatorRequest,
 ): ResponsesResult {
-  const conversation = prepared.conversation ?? createConversationRef()
-
   return {
     ...cloneValue(upstreamResponse),
     previous_response_id: prepared.previousResponseId ?? null,
-    conversation,
+    conversation: prepared.conversation,
     truncation: requestPayload.truncation ?? null,
     store: prepared.shouldStore,
     user: normalizeNullableString(requestPayload.user),
@@ -151,15 +150,15 @@ export function listStoredInputItemsOrThrow(
 
   let orderedItems = cloneValue(items)
 
+  if (params?.order === 'desc') {
+    orderedItems.reverse()
+  }
+
   if (params?.after) {
     const afterIndex = orderedItems.findIndex(item => getInputItemId(item) === params.after)
     if (afterIndex >= 0) {
       orderedItems = orderedItems.slice(afterIndex + 1)
     }
-  }
-
-  if (params?.order === 'desc') {
-    orderedItems.reverse()
   }
 
   const limitedItems = orderedItems.slice(0, params?.limit ?? orderedItems.length)

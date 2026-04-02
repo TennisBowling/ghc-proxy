@@ -1212,6 +1212,9 @@ describe('responses and routing', () => {
     expect(createdPayload?.type).toBe('response.created')
     expect(completedPayload?.type).toBe('response.completed')
     expect((createdPayload as Extract<ResponseStreamEvent, { type: 'response.created' }>)?.response.conversation).toBeTruthy()
+    expect((createdPayload as Extract<ResponseStreamEvent, { type: 'response.created' }>)?.response.conversation).toEqual(
+      (completedPayload as Extract<ResponseStreamEvent, { type: 'response.completed' }>)?.response.conversation,
+    )
     expect((completedPayload as Extract<ResponseStreamEvent, { type: 'response.completed' }>)?.response.store).toBe(true)
 
     const retrieveResponse = await app.handle(new Request('http://localhost/v1/responses/resp_stream_1', {
@@ -1223,7 +1226,104 @@ describe('responses and routing', () => {
     expect(retrieved.id).toBe('resp_stream_1')
     expect(retrieved.output_text).toBe('streamed')
     expect(retrieved.status).toBe('completed')
+    expect(retrieved.conversation).toEqual(
+      (createdPayload as Extract<ResponseStreamEvent, { type: 'response.created' }>)?.response.conversation,
+    )
     expect(createCalls).toHaveLength(1)
+  })
+
+  test('/v1/responses official emulator allows continuing from the conversation emitted in streamed created events', async () => {
+    const app = createApp()
+    enableOfficialResponsesEmulator()
+    rejectUnexpectedEmulatorResourceCalls()
+    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    const createCalls: Array<CapturedResponsesCall> = []
+    CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
+      (
+        async function* () {
+          yield {
+            event: 'response.created',
+            data: JSON.stringify({
+              type: 'response.created',
+              sequence_number: 0,
+              response: buildResponsesResult({
+                id: 'resp_stream_continue_1',
+                model: 'gpt-5',
+                status: 'in_progress',
+                usage: null,
+              }),
+            } satisfies ResponseStreamEvent),
+          }
+          yield {
+            event: 'response.completed',
+            data: JSON.stringify({
+              type: 'response.completed',
+              sequence_number: 1,
+              response: buildResponsesResult({
+                id: 'resp_stream_continue_1',
+                model: 'gpt-5',
+                status: 'completed',
+                output: [{
+                  id: 'msg_stream_continue_1',
+                  type: 'message',
+                  role: 'assistant',
+                  status: 'completed',
+                  content: [{ type: 'output_text', text: 'streamed first', annotations: [] }],
+                }],
+                output_text: 'streamed first',
+                usage: null,
+              }),
+            } satisfies ResponseStreamEvent),
+          }
+        }
+      )(),
+      buildResponsesResult({
+        id: 'resp_stream_continue_2',
+        model: 'gpt-5',
+        status: 'completed',
+        output_text: 'streamed second',
+        usage: null,
+      }),
+    ], createCalls)
+
+    const firstResponse = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-5',
+        stream: true,
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+      }),
+    }))
+    const firstEvents = parseSse(await firstResponse.text())
+    const createdEvent = firstEvents.find(event => event.event === 'response.created')
+    const createdPayload = createdEvent?.data ? JSON.parse(createdEvent.data) as Extract<ResponseStreamEvent, { type: 'response.created' }> : undefined
+
+    expect(createdPayload?.response.conversation).toBeTruthy()
+
+    const secondResponse = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-5',
+        conversation: createdPayload?.response.conversation,
+        input: [{ type: 'message', role: 'user', content: 'follow up' }],
+      }),
+    }))
+    const second = await secondResponse.json() as ResponsesResult
+
+    expect(secondResponse.status).toBe(200)
+    expect(second.conversation).toEqual(createdPayload?.response.conversation)
+    expect(createCalls[1]?.payload.input).toEqual([
+      { type: 'message', role: 'user', content: 'hello' },
+      {
+        type: 'message',
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: 'streamed first' }],
+      },
+      { type: 'message', role: 'user', content: 'follow up' },
+    ])
   })
 
   test('/v1/responses official emulator continues from previous_response_id', async () => {
@@ -1513,6 +1613,41 @@ describe('responses and routing', () => {
     }))
 
     expect(response.status).toBe(400)
+  })
+
+  test('/v1/responses official emulator paginates input_items after sorting for descending queries', async () => {
+    const app = createApp()
+    enableOfficialResponsesEmulator()
+    rejectUnexpectedEmulatorResourceCalls()
+    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+
+    state.responsesEmulator.setResponse(buildResponsesResult({
+      id: 'resp_desc_page',
+      model: 'gpt-5',
+      conversation: { id: 'conv_desc_page' },
+    }))
+    state.responsesEmulator.setInputItems('resp_desc_page', [
+      { id: 'item_1', type: 'compaction', encrypted_content: 'enc_1' },
+      { id: 'item_2', type: 'compaction', encrypted_content: 'enc_2' },
+      { id: 'item_3', type: 'compaction', encrypted_content: 'enc_3' },
+      { id: 'item_4', type: 'compaction', encrypted_content: 'enc_4' },
+    ])
+
+    const response = await app.handle(new Request('http://localhost/v1/responses/resp_desc_page/input_items?order=desc&after=item_3&limit=2', {
+      method: 'GET',
+    }))
+    const payload = await response.json() as {
+      data: Array<{ id: string }>
+      first_id: string | null
+      last_id: string | null
+      has_more: boolean
+    }
+
+    expect(response.status).toBe(200)
+    expect(payload.data.map(item => item.id)).toEqual(['item_2', 'item_1'])
+    expect(payload.first_id).toBe('item_2')
+    expect(payload.last_id).toBe('item_1')
+    expect(payload.has_more).toBe(false)
   })
 
   test('/v1/responses/input_tokens official emulator estimates tokens from continued history', async () => {
