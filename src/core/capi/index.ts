@@ -1,6 +1,14 @@
 export { buildCapiExecutionPlan } from './plan-builder'
 export { inferModelFamily, selectCapiProfile } from './profile'
-export { buildCapiRequestContext, inferInitiator, readCapiRequestContext } from './request-context'
+export {
+  buildCapiRequestContext,
+  inferInitiator,
+  normalizeAnthropicRequestContext,
+  normalizeChatRequestContext,
+  normalizeResponsesRequestContext,
+  readCapiRequestContext,
+  resolveInitiator,
+} from './request-context'
 export type {
   CapiChatCompletionChunk,
   CapiChatCompletionResponse,

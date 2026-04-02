@@ -80,6 +80,8 @@ export function createResponsesPassthroughStrategy(
     initiator: 'user' | 'agent'
     requestContext: Partial<CapiRequestContext>
     signal: AbortSignal
+    mapResponse?: (response: ResponsesResult) => ResponsesResult
+    onTerminalResponse?: (response: ResponsesResult) => void
   },
 ): ExecutionStrategy<ResponsesResult | AsyncIterable<SSEStreamChunk>, SSEStreamChunk> {
   const tracker = createStreamIdTracker()
@@ -98,7 +100,62 @@ export function createResponsesPassthroughStrategy(
     },
 
     translateStreamChunk(chunk) {
-      return passthroughSSEChunk(chunk, fixStreamIds(chunk.data ?? '', chunk.event, tracker))
+      const fixedData = fixStreamIds(chunk.data ?? '', chunk.event, tracker)
+      const mappedData = options.mapResponse
+        ? mapChunkResponse(fixedData, options.mapResponse)
+        : fixedData
+      const parsedResponse = tryExtractTerminalResponse(mappedData)
+      if (parsedResponse) {
+        options.onTerminalResponse?.(parsedResponse)
+      }
+      return passthroughSSEChunk(chunk, mappedData)
     },
   }
+}
+
+function mapChunkResponse(
+  rawData: string,
+  mapResponse: (response: ResponsesResult) => ResponsesResult,
+): string {
+  if (!rawData) {
+    return rawData
+  }
+
+  try {
+    const parsed = JSON.parse(rawData) as Record<string, unknown>
+    if (isRecord(parsed.response)) {
+      parsed.response = mapResponse(parsed.response as unknown as ResponsesResult)
+      return JSON.stringify(parsed)
+    }
+  }
+  catch {
+  }
+
+  return rawData
+}
+
+function tryExtractTerminalResponse(rawData: string): ResponsesResult | undefined {
+  if (!rawData) {
+    return undefined
+  }
+
+  try {
+    const parsed = JSON.parse(rawData) as Record<string, unknown>
+    if (
+      parsed.type !== 'response.completed'
+      && parsed.type !== 'response.incomplete'
+      && parsed.type !== 'response.failed'
+    ) {
+      return undefined
+    }
+
+    const response = parsed.response
+    if (response && typeof response === 'object') {
+      return response as unknown as ResponsesResult
+    }
+  }
+  catch {
+  }
+
+  return undefined
 }

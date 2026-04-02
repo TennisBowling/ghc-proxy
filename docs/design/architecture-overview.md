@@ -39,6 +39,13 @@ Client Request (OpenAI / Anthropic format)
     |
     v
 +-------------------------------------------+
+|   Request Context Normalization           |
+|  (header aliases, subagent markers,       |
+|   initiator/session overrides)            |
++-------------------------------------------+
+    |
+    v
++-------------------------------------------+
 |         Model Policy & Routing            |
 |  (resolve model, smart rerouting,         |
 |   compact detection)                     |
@@ -110,6 +117,16 @@ Client Response (OpenAI / Anthropic format)
 ## Endpoint Compatibility Notes
 
 `POST /v1/embeddings` remains OpenAI-compatible at the proxy boundary. When Copilot upstream expects a stricter request shape, the proxy normalizes internally before forwarding, for example converting a single string `input` into a one-element string array.
+
+`POST /v1/responses` stays close to passthrough by default, but can optionally enable a local "official emulator" state layer. In that mode, the proxy still uses Copilot `/responses` for creation while keeping in-memory OpenAI-style state for `previous_response_id`, `conversation`, retrieve, input item listing, delete, and local `input_tokens` estimation. Emulator state is memory-only and expires by TTL.
+
+For coding-agent clients, the proxy also recognizes a lightweight subagent contract before upstream execution:
+
+- `x-session-id` is accepted as an alias for the root `clientSessionId`
+- synthetic `<system-reminder>` blocks that carry `__SUBAGENT_MARKER__{...}` are removed from prompt text before forwarding
+- detected subagent traffic is reclassified to `conversation-subagent`, and the upstream initiator is forced to `agent`
+
+That keeps client plugin metadata out of the actual model prompt while preserving the root session identity in Copilot request headers.
 
 ## Token Usage
 

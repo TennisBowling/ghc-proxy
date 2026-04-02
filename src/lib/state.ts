@@ -1,9 +1,11 @@
+import type { ResponsesEmulatorState } from './responses-emulator-state'
 import type { ClientConfig } from '~/clients'
+
 import type { ModelsResponse } from '~/types'
 
 import consola from 'consola'
-
 import { CopilotClient, getVSCodeVersion } from '~/clients'
+import { responsesEmulatorState } from './responses-emulator-state'
 
 export interface AuthState {
   githubToken?: string
@@ -35,6 +37,7 @@ export interface AppState {
   config: RuntimeConfig
   cache: CacheState
   rateLimit: RateLimitState
+  responsesEmulator: ResponsesEmulatorState
 }
 
 export const state: AppState = {
@@ -47,6 +50,7 @@ export const state: AppState = {
   },
   cache: {},
   rateLimit: {},
+  responsesEmulator: responsesEmulatorState,
 }
 
 export function getClientConfig(): ClientConfig {

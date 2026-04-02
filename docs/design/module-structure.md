@@ -61,8 +61,9 @@ The responses route also has additional handlers:
 ```text
 routes/responses/
 ├── route.ts
-├── handler.ts
-├── resource-handler.ts             # GET/DELETE /responses/{id}
+├── handler.ts                      # POST /responses create flow
+├── resource-handler.ts             # GET/DELETE /responses/{id} and input_tokens
+├── emulator.ts                     # Optional OpenAI-style local state emulation helpers
 ├── strategy.ts
 └── context-management.ts           # Optional Responses context-management and compaction policies
 ```
@@ -123,7 +124,7 @@ High-level adapters that wire together translators and clients:
 | `types.ts`            | CAPI-specific types (CapiExecutionPlan, CapiMessage)  |
 | `plan-builder.ts`     | Build execution plans from conversation requests     |
 | `profile.ts`          | API endpoint profile selection by model family       |
-| `request-context.ts`  | Infer interaction type and context from headers      |
+| `request-context.ts`  | Infer interaction type from headers, normalize `x-session-id`, consume subagent markers, and apply initiator/session overrides |
 
 ### `src/core/conversation/` -- Conversation Model
 
@@ -166,6 +167,7 @@ ConversationRequest
 | `approval.ts`               | Manual approval workflow                             |
 | `paths.ts`                  | Config/token file paths                              |
 | `token.ts`                  | GitHub and Copilot token management                  |
+| `responses-emulator-state.ts` | In-memory TTL state for the opt-in Responses official emulator |
 
 ### `src/types/` -- Type Definitions
 

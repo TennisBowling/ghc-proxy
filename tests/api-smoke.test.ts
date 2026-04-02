@@ -1,22 +1,26 @@
-import type { CapturedChatCall, CapturedEmbeddingCall } from './helpers'
+import type { CapturedChatCall, CapturedEmbeddingCall, CapturedResponsesCall } from './helpers'
 import type { AnthropicResponse } from '~/translator'
 import type {
   ChatCompletionChunk,
   ChatCompletionResponse,
   EmbeddingResponse,
+  ResponsesResult,
 } from '~/types'
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { CopilotClient } from '~/clients'
+import { getCachedConfig } from '~/lib/config'
 import { state } from '~/lib/state'
 import {
   buildModel,
   buildModelsResponse,
+  buildResponsesResult,
   createApp,
   expectCacheCheckpoints,
   mockEmbeddings,
   mockNonStreamingResponse,
+  mockResponses,
   mockStreamingResponse,
   parseSse,
   restoreStateSnapshot,
@@ -26,6 +30,7 @@ import {
 
 const originalCreateChatCompletions = CopilotClient.prototype.createChatCompletions
 const originalCreateEmbeddings = CopilotClient.prototype.createEmbeddings
+const originalCreateResponses = CopilotClient.prototype.createResponses
 const originalState = saveStateSnapshot()
 
 beforeEach(() => {
@@ -35,10 +40,69 @@ beforeEach(() => {
 afterEach(() => {
   CopilotClient.prototype.createChatCompletions = originalCreateChatCompletions
   CopilotClient.prototype.createEmbeddings = originalCreateEmbeddings
+  CopilotClient.prototype.createResponses = originalCreateResponses
   restoreStateSnapshot(originalState)
 })
 
 describe('API smoke', () => {
+  test('Responses emulator create and retrieve stay OpenAI-compatible at the public boundary', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    const config = getCachedConfig() as Record<string, unknown>
+    config.responsesOfficialEmulator = true
+    config.responsesOfficialEmulatorTtlSeconds = 14_400
+    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_smoke_1',
+      model: 'gpt-5',
+      status: 'completed',
+      output: [{
+        id: 'msg_smoke_1',
+        type: 'message',
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: 'smoke ok', annotations: [] }],
+      }],
+      output_text: 'smoke ok',
+      usage: null,
+    }), calls)
+
+    const createResponse = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-5',
+        input: [{ type: 'message', role: 'user', content: 'hello smoke' }],
+      }),
+    }))
+    const created = await createResponse.json() as ResponsesResult
+
+    expect(createResponse.status).toBe(200)
+    expect(created).toMatchObject({
+      id: 'resp_smoke_1',
+      object: 'response',
+      model: 'gpt-5',
+      previous_response_id: null,
+      store: true,
+      output_text: 'smoke ok',
+    })
+    expect(created.conversation).toBeTruthy()
+    expect(calls[0]?.payload.input).toEqual([
+      { type: 'message', role: 'user', content: 'hello smoke' },
+    ])
+
+    const retrieveResponse = await app.handle(new Request('http://localhost/v1/responses/resp_smoke_1', {
+      method: 'GET',
+    }))
+    const retrieved = await retrieveResponse.json() as ResponsesResult
+
+    expect(retrieveResponse.status).toBe(200)
+    expect(retrieved.id).toBe('resp_smoke_1')
+    expect(retrieved.output_text).toBe('smoke ok')
+    expect(retrieved.conversation).toEqual(created.conversation)
+  })
+
   test('Anthropic non-stream preserves Claude reasoning/tool semantics and CAPI cache planning', async () => {
     const app = createApp()
     const calls: Array<CapturedChatCall> = []
@@ -293,6 +357,58 @@ describe('API smoke', () => {
     expect(events.some(event => event.data?.includes('"cache_read_input_tokens":50'))).toBe(true)
     expect(events.some(event => event.data?.includes('"stop_reason":"tool_use"'))).toBe(true)
     expect(events.at(-1)?.event).toBe('message_stop')
+  })
+
+  test('Anthropic requests consume subagent markers and preserve root session context', async () => {
+    const app = createApp()
+    const calls: Array<CapturedChatCall> = []
+
+    CopilotClient.prototype.createChatCompletions = mockNonStreamingResponse({
+      id: 'msg_subagent',
+      object: 'chat.completion',
+      created: 1,
+      model: 'claude-sonnet-4.5',
+      choices: [{
+        index: 0,
+        finish_reason: 'stop',
+        logprobs: null,
+        message: {
+          role: 'assistant',
+          content: 'done',
+        },
+      }],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 2,
+        total_tokens: 12,
+      },
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-session-id': 'root-session-1',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4.5',
+        max_tokens: 256,
+        messages: [{
+          role: 'user',
+          content: `<system-reminder>\nSubagentStart hook additional context: __SUBAGENT_MARKER__{"session_id":"subagent-session-1","agent_id":"subagent-session-1","agent_type":"opencode-subagent"}\n</system-reminder>\nInspect src/main.ts`,
+        }],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.options?.initiator).toBe('agent')
+    expect(calls[0]?.options?.requestContext).toMatchObject({
+      interactionType: 'conversation-subagent',
+      agentTaskId: 'subagent-session-1',
+      clientSessionId: 'root-session-1',
+    })
+    expect(calls[0]?.payload.messages[0]?.content).toBe('Inspect src/main.ts')
   })
 
   test('OpenAI non-stream keeps public schema clean while sharing Claude planning core', async () => {

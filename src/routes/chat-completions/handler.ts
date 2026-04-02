@@ -3,7 +3,7 @@ import type { ModelMappingInfo } from '~/lib/request-logger'
 import consola from 'consola'
 
 import { CopilotTransport, OpenAIChatAdapter } from '~/adapters'
-import { readCapiRequestContext } from '~/core/capi'
+import { normalizeChatRequestContext } from '~/core/capi/request-context'
 import { runStrategy } from '~/lib/execution-strategy'
 import { findModelById } from '~/lib/model-capabilities'
 import { applyModelRewrite } from '~/lib/model-rewrite'
@@ -33,6 +33,7 @@ export async function handleCompletionCore(
 ): Promise<CompletionCoreResult> {
   const adapter = new OpenAIChatAdapter()
   let payload = parseOpenAIChatPayload(body)
+  const requestContext = normalizeChatRequestContext(payload, headers)
   consola.debug('Request payload:', JSON.stringify(payload).slice(-400))
 
   // Model rewrite (normalize + user rules)
@@ -65,7 +66,7 @@ export async function handleCompletionCore(
   const upstreamSignal = createUpstreamSignalFromConfig(signal)
 
   const plan = adapter.toCapiPlan(payload, {
-    requestContext: readCapiRequestContext(headers),
+    requestContext,
   })
 
   const modelMapping: ModelMappingInfo = {

@@ -29,6 +29,8 @@ const configFileSchema = z.object({
   responsesApiAutoCompactInput: z.boolean().optional(),
   responsesApiAutoContextManagement: z.boolean().optional(),
   responsesApiContextManagementModels: z.array(z.string()).optional(),
+  responsesOfficialEmulator: z.boolean().optional(),
+  responsesOfficialEmulatorTtlSeconds: z.number().int().positive().optional(),
   modelReasoningEfforts: z.record(z.string(), reasoningEffortSchema).optional(),
   modelRewrites: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
   contextUpgrade: z.boolean().optional(),
@@ -46,6 +48,8 @@ const DEFAULT_USE_FUNCTION_APPLY_PATCH = true
 const DEFAULT_COMPACT_USE_SMALL_MODEL = false
 const DEFAULT_RESPONSES_API_AUTO_COMPACT_INPUT = false
 const DEFAULT_RESPONSES_API_AUTO_CONTEXT_MANAGEMENT = false
+const DEFAULT_RESPONSES_OFFICIAL_EMULATOR = false
+const DEFAULT_RESPONSES_OFFICIAL_EMULATOR_TTL_SECONDS = 14_400
 const DEFAULT_CONTEXT_UPGRADE = true
 const DEFAULT_CONTEXT_UPGRADE_TOKEN_THRESHOLD = 160_000
 
@@ -131,6 +135,14 @@ export function isResponsesApiContextManagementModel(model: string): boolean {
     return false
   }
   return cachedConfig.responsesApiContextManagementModels?.includes(model) ?? false
+}
+
+export function shouldUseResponsesOfficialEmulator(): boolean {
+  return cachedConfig.responsesOfficialEmulator ?? DEFAULT_RESPONSES_OFFICIAL_EMULATOR
+}
+
+export function getResponsesOfficialEmulatorTtlSeconds(): number {
+  return cachedConfig.responsesOfficialEmulatorTtlSeconds ?? DEFAULT_RESPONSES_OFFICIAL_EMULATOR_TTL_SECONDS
 }
 
 export function shouldContextUpgrade(): boolean {

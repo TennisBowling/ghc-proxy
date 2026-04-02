@@ -234,6 +234,8 @@ export interface ResponsesResult {
   object: 'response'
   created_at: number
   model: string
+  previous_response_id?: string | null
+  conversation?: ResponseConversation | null
   output: Array<ResponseOutputItem>
   output_text: string
   status: string
@@ -247,6 +249,10 @@ export interface ResponsesResult {
   tool_choice: unknown
   tools: Array<ResponseTool>
   top_p: number | null
+  truncation?: 'auto' | 'disabled' | null
+  store?: boolean | null
+  user?: string | null
+  service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority' | null
 }
 
 export interface ResponseIncompleteDetails {

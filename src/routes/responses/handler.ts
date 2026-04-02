@@ -1,9 +1,9 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
 import type { ModelMappingInfo } from '~/lib/request-logger'
 
-import type { ResponseFunctionTool, ResponsesPayload, ResponseTool } from '~/types'
-import { readCapiRequestContext } from '~/core/capi'
-import { shouldUseFunctionApplyPatch } from '~/lib/config'
+import type { ResponseFunctionTool, ResponsesPayload, ResponsesResult, ResponseTool } from '~/types'
+import { normalizeResponsesRequestContext, resolveInitiator } from '~/core/capi/request-context'
+import { shouldUseFunctionApplyPatch, shouldUseResponsesOfficialEmulator } from '~/lib/config'
 import { throwInvalidRequestError } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
 import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
@@ -14,6 +14,7 @@ import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseResponsesPayload } from '~/lib/validation'
 
 import { applyContextManagement, compactInputByLatestCompaction, getResponsesRequestOptions } from './context-management'
+import { decorateStoredResponse, persistEmulatorResponse, prepareEmulatorRequest } from './emulator'
 import { createResponsesPassthroughStrategy } from './strategy'
 
 const HTTP_URL_RE = /^https?:\/\//i
@@ -36,15 +37,22 @@ export async function handleResponsesCore(
   { body, signal, headers }: ResponsesCoreParams,
 ): Promise<ResponsesCoreResult> {
   const payload = parseResponsesPayload(body)
+  const requestContext = normalizeResponsesRequestContext(payload, headers)
+  const emulatorMode = shouldUseResponsesOfficialEmulator()
+  const emulatorPrepared = emulatorMode
+    ? prepareEmulatorRequest(payload)
+    : undefined
 
   // Model rewrite (normalize + user rules)
-  const rewrite = applyModelRewrite(payload)
+  const rewrite = applyModelRewrite(emulatorPrepared?.upstreamPayload ?? payload)
 
-  applyResponsesToolTransforms(payload)
-  applyResponsesInputPolicies(payload)
-  compactInputByLatestCompaction(payload)
+  const effectivePayload = emulatorPrepared?.upstreamPayload ?? payload
 
-  const selectedModel = findModelById(payload.model)
+  applyResponsesToolTransforms(effectivePayload)
+  applyResponsesInputPolicies(effectivePayload)
+  compactInputByLatestCompaction(effectivePayload)
+
+  const selectedModel = findModelById(effectivePayload.model)
   if (!selectedModel) {
     throwInvalidRequestError(
       'The selected model could not be resolved.',
@@ -59,27 +67,57 @@ export async function handleResponsesCore(
   }
 
   applyContextManagement(
-    payload,
+    effectivePayload,
     selectedModel.capabilities.limits.max_prompt_tokens,
   )
 
-  const { vision, initiator } = getResponsesRequestOptions(payload)
+  const { vision, initiator } = getResponsesRequestOptions(effectivePayload)
   const upstreamSignal = createUpstreamSignalFromConfig(signal)
   const copilotClient = createCopilotClient()
+  const decorateResponse = emulatorPrepared
+    ? (response: ResponsesResult) => decorateStoredResponse(response, payload, emulatorPrepared)
+    : undefined
 
-  const strategy = createResponsesPassthroughStrategy(copilotClient, payload, {
+  const strategy = createResponsesPassthroughStrategy(copilotClient, effectivePayload, {
     vision,
-    initiator,
-    requestContext: readCapiRequestContext(headers),
+    initiator: resolveInitiator(initiator, requestContext),
+    requestContext,
     signal: upstreamSignal.signal,
+    mapResponse: decorateResponse,
+    onTerminalResponse: emulatorPrepared
+      ? (terminalResponse) => {
+          if (!emulatorPrepared?.shouldStore) {
+            return
+          }
+          persistEmulatorResponse(
+            terminalResponse,
+            emulatorPrepared.effectiveInputItems,
+          )
+        }
+      : undefined,
   })
 
   const result = await runStrategy(strategy, upstreamSignal)
 
+  if (
+    emulatorPrepared
+    && result.kind === 'json'
+  ) {
+    const emulatedResponse = decorateStoredResponse(
+      result.data as ResponsesResult,
+      payload,
+      emulatorPrepared,
+    )
+    if (emulatorPrepared.shouldStore) {
+      persistEmulatorResponse(emulatedResponse, emulatorPrepared.effectiveInputItems)
+    }
+    result.data = emulatedResponse
+  }
+
   const modelMapping: ModelMappingInfo = {
     originalModel: rewrite.originalModel,
     rewrittenModel: rewrite.model,
-    mappedModel: payload.model,
+    mappedModel: effectivePayload.model,
   }
 
   return { result, modelMapping }
