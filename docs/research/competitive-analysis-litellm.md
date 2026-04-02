@@ -192,11 +192,11 @@ The three are **additive** and non-overlapping. Total cost = read *0.1 + creatio
 
 ### Per-Path Correctness Analysis
 
-#### Native Messages Path — Fully Correct
+#### Native Messages Path — Mostly Correct
 - File: `src/routes/messages/strategies/native-messages.ts`
-- Request: client `cache_control` passed through as-is
+- Request: client `cache_control` passed through with normalization — extra sub-fields like `scope` are stripped because Copilot does not yet accept them (see `sanitizeCacheControl` in `strategy-registry.ts`)
 - Response: `cache_creation_input_tokens` + `cache_read_input_tokens` passed through as-is
-- No translation loss
+- Minimal translation loss: only `cache_control.scope` is dropped
 
 #### Chat Completions Fallback Path — Two Known Issues
 

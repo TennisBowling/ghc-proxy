@@ -1891,6 +1891,68 @@ describe('responses and routing', () => {
     expect(calls[0]?.payload.output_config).toBeUndefined()
   })
 
+  test('/v1/messages native path strips cache_control.scope from system, messages, and tools', async () => {
+    const app = createApp()
+    const calls: Array<CapturedMessagesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] }))
+
+    CopilotClient.prototype.createMessages = mockMessages({
+      id: 'msg_1',
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'ok' }],
+      model: 'claude-sonnet-4.5',
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4.5',
+        max_tokens: 256,
+        system: [
+          { type: 'text', text: 'System prompt', cache_control: { type: 'ephemeral', scope: 'turn' } },
+        ],
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'hello', cache_control: { type: 'ephemeral', scope: 'session' } },
+            ],
+            cache_control: { type: 'ephemeral', scope: 'turn' },
+          },
+        ],
+        tools: [
+          {
+            name: 'Bash',
+            input_schema: { type: 'object', properties: { cmd: { type: 'string' } } },
+            cache_control: { type: 'ephemeral', scope: 'turn' },
+          },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls).toHaveLength(1)
+
+    const payload = calls[0]!.payload as unknown as Record<string, unknown>
+
+    const system = payload.system as Array<Record<string, unknown>>
+    expect(system[0]!.cache_control).toEqual({ type: 'ephemeral' })
+
+    const messages = payload.messages as Array<Record<string, unknown>>
+    expect(messages[0]!.cache_control).toEqual({ type: 'ephemeral' })
+
+    const content = messages[0]!.content as Array<Record<string, unknown>>
+    expect(content[0]!.cache_control).toEqual({ type: 'ephemeral' })
+
+    const tools = payload.tools as Array<Record<string, unknown>>
+    expect(tools[0]!.cache_control).toEqual({ type: 'ephemeral' })
+  })
+
   test('compact routing can move /v1/messages to configured small model', async () => {
     const app = createApp()
     const chatCalls: Array<CapturedChatCall> = []
