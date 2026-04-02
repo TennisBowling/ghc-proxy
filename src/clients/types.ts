@@ -8,6 +8,8 @@ export interface ClientConfig {
   accountType: 'individual' | 'business' | 'enterprise'
   vsCodeVersion?: string
   copilotApiBase?: string
+  githubBaseUrl?: string
+  githubApiBaseUrl?: string
 }
 
 export interface ClientDeps {
