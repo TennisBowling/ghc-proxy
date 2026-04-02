@@ -17,7 +17,9 @@ The order matters. Native passthrough wins when the model exposes it. The Respon
 When a model supports Copilot `POST /v1/messages`, the proxy forwards the Anthropic payload with minimal mutation:
 
 - Existing assistant thinking blocks that only contain placeholder or encoded Responses state are filtered before passthrough.
-- All other fields — including `thinking`, `output_config`, and any unknown fields allowed by the loose Zod schema — are passed through as-is to the upstream endpoint.
+- `output_config` is stripped for models that reject it (see `MODELS_REJECTING_OUTPUT_CONFIG` in `model-capabilities.ts`).
+- `cache_control` fields on system blocks, messages, content blocks, and tools are normalized to `{ type: "ephemeral" }` — extra sub-fields like `scope` are stripped because the upstream Copilot API does not yet accept them. This is a temporary workaround; when Copilot supports `scope`, the filter (`sanitizeCacheControl` in `strategy-registry.ts`) should be removed. The `smoke-cache-control` script includes a direct upstream probe that will fail when `scope` becomes accepted, signalling the filter is no longer needed.
+- All other fields — including `thinking` and any unknown fields allowed by the loose Zod schema — are passed through as-is to the upstream endpoint.
 
 ## Responses Translation Path
 

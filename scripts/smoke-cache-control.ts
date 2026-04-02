@@ -5,7 +5,7 @@ import type { Model } from '~/types'
 import process from 'node:process'
 import { state } from '~/lib/state'
 import { createServer } from '~/server'
-import { bootstrapProbe, runMain } from './lib/probe-harness'
+import { bootstrapProbe, pickFirstMessagesModel, probeMessagesEndpoint, runMain } from './lib/probe-harness'
 
 const PORT = 14141
 const BASE_URL = `http://localhost:${PORT}`
@@ -510,14 +510,14 @@ const TOOL_DEFINITIONS = [
 function buildRequestBody(modelId: string, strategy: Strategy): Record<string, unknown> {
   const isNativeMessages = strategy === 'native-messages'
 
-  // For native-messages (passthrough to Anthropic), the client must include
-  // cache_control breakpoints. For other strategies, the proxy handles injection.
+  // For native-messages, include cache_control with `scope` to match real
+  // Claude Code behavior. The proxy strips `scope` before forwarding.
   const system = isNativeMessages
     ? [
         {
           type: 'text',
           text: SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
+          cache_control: { type: 'ephemeral', scope: 'turn' },
         },
       ]
     : SYSTEM_PROMPT
@@ -526,7 +526,7 @@ function buildRequestBody(modelId: string, strategy: Strategy): Record<string, u
     ? TOOL_DEFINITIONS.map((tool, i) =>
         // Place cache_control on the last tool to mark the end of the tool block
         i === TOOL_DEFINITIONS.length - 1
-          ? { ...tool, cache_control: { type: 'ephemeral' as const } }
+          ? { ...tool, cache_control: { type: 'ephemeral' as const, scope: 'turn' as const } }
           : tool,
       )
     : TOOL_DEFINITIONS
@@ -776,16 +776,18 @@ async function main() {
   }
 
   if (jsonMode) {
+    const scopeProbeResult = await probeScopeSupport()
     const allSucceeded = results.every((r) => {
       if (r.strategy === 'skipped')
         return true
       return (r.primeRequest?.httpStatus === 200)
         && (r.repeatRequest?.httpStatus === 200)
-    })
+    }) && scopeProbeResult !== 'supported'
 
     process.stdout.write(`${JSON.stringify({
       generatedAt: new Date().toISOString(),
       results,
+      scopeSupport: scopeProbeResult,
       summary: {
         totalModels: Object.values(TARGET_MODELS).flat().length,
         tested: results.filter(r => r.strategy !== 'skipped').length,
@@ -815,6 +817,55 @@ async function main() {
   if (anyFailure) {
     process.exitCode = 1
   }
+
+  // ── Upstream scope support probe ──
+  const scopeProbeResult = await probeScopeSupport()
+  if (scopeProbeResult === 'supported') {
+    process.stdout.write(
+      '\n⚠ FAIL: Copilot now accepts cache_control.scope!\n'
+      + '  → Remove sanitizeCacheControl workaround in src/routes/messages/strategy-registry.ts\n\n',
+    )
+    process.exitCode = 1
+  }
+  else if (scopeProbeResult === 'rejected') {
+    process.stdout.write('\ncache_control.scope: still rejected upstream (filter still needed)\n')
+  }
+  else {
+    process.stdout.write('\ncache_control.scope: probe skipped (no native-messages model available)\n')
+  }
+}
+
+/**
+ * Probe whether the upstream Copilot API accepts `cache_control.scope`
+ * by sending a request directly (bypassing proxy sanitization).
+ *
+ * Returns 'supported' if the upstream accepts scope (meaning we should
+ * remove the sanitizeCacheControl workaround), 'rejected' if it still
+ * rejects scope, or 'skipped' if no suitable model is available.
+ */
+async function probeScopeSupport(): Promise<'supported' | 'rejected' | 'skipped'> {
+  const models = state.cache.models?.data ?? []
+  const model = pickFirstMessagesModel(models)
+  if (!model)
+    return 'skipped'
+
+  const result = await probeMessagesEndpoint({
+    model: model.id,
+    max_tokens: 1,
+    system: [
+      { type: 'text', text: 'Reply with OK.', cache_control: { type: 'ephemeral', scope: 'turn' } },
+    ],
+    messages: [{ role: 'user', content: 'OK' }],
+  })
+
+  if (result.status === 'accepted')
+    return 'supported'
+
+  if (result.status === 'rejected' && result.errorMessage?.includes('scope'))
+    return 'rejected'
+
+  // Other errors (auth, network) — don't fail the test
+  return 'skipped'
 }
 
 runMain(main)

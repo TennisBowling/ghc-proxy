@@ -97,12 +97,50 @@ function sanitizeOutputConfig(
   }
 }
 
+function normalizeCacheControlBlock(obj: Record<string, unknown>) {
+  if (obj.cache_control && typeof obj.cache_control === 'object') {
+    obj.cache_control = { type: (obj.cache_control as Record<string, unknown>).type }
+  }
+}
+
+/**
+ * Normalize `cache_control` to strip extra fields (e.g. `scope`) that
+ * the upstream Copilot API does not yet accept.
+ *
+ * Temporary workaround — when Copilot supports `scope`, this filter
+ * should be removed. The smoke-cache-control script tests whether the
+ * upstream accepts `scope`.
+ */
+function sanitizeCacheControl(payload: AnthropicMessagesPayload): void {
+  if (Array.isArray(payload.system)) {
+    for (const block of payload.system) {
+      normalizeCacheControlBlock(block as unknown as Record<string, unknown>)
+    }
+  }
+
+  for (const message of payload.messages) {
+    normalizeCacheControlBlock(message as unknown as Record<string, unknown>)
+    if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        normalizeCacheControlBlock(block as unknown as Record<string, unknown>)
+      }
+    }
+  }
+
+  if (payload.tools) {
+    for (const tool of payload.tools) {
+      normalizeCacheControlBlock(tool as unknown as Record<string, unknown>)
+    }
+  }
+}
+
 const nativeMessagesEntry: StrategyEntry = {
   name: 'native-messages',
   canHandle: model => modelSupportsEndpoint(model, MESSAGES_ENDPOINT),
   async execute(ctx) {
     filterThinkingBlocksForNativeMessages(ctx.anthropicPayload)
     sanitizeOutputConfig(ctx.anthropicPayload, ctx.selectedModel)
+    sanitizeCacheControl(ctx.anthropicPayload)
 
     const strategy = createNativeMessagesStrategy(
       ctx.copilotClient,
