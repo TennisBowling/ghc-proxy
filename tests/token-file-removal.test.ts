@@ -103,3 +103,104 @@ describe('Token file removal (RED phase)', () => {
     expect(config.githubToken).toBe('new-test-token')
   })
 })
+
+describe('GHE domain-switch re-auth', () => {
+  beforeEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true })
+    await fs.mkdir(tempDir, { recursive: true })
+
+    state.auth = {}
+    state.cache = {}
+    state.config = {
+      accountType: 'individual',
+      manualApprove: false,
+      rateLimitWait: false,
+      showToken: false,
+    }
+
+    mockPollAccessToken.mockClear()
+  })
+
+  test('domain changed → re-auth forced (cached token NOT reused)', async () => {
+    // Simulate a previously persisted config with a github.com token and no GHE domain
+    await fs.writeFile(
+      PATHS.CONFIG_PATH,
+      JSON.stringify({ githubToken: 'old-github-com-token' }),
+    )
+    await readConfig()
+
+    // Now the user configures a GHE domain (different from persisted undefined)
+    state.auth.gheDomain = 'corp.ghe.com'
+
+    await setupGitHubToken()
+
+    // The old token must NOT be reused — device flow should have been triggered
+    expect(mockPollAccessToken).toHaveBeenCalledTimes(1)
+    expect(state.auth.githubToken).toBe('new-test-token')
+
+    // The new GHE domain should be persisted in config
+    const configContent = await fs.readFile(PATHS.CONFIG_PATH, 'utf8')
+    const config = JSON.parse(configContent) as { gheDomain?: string, githubToken?: string }
+    expect(config.gheDomain).toBe('corp.ghe.com')
+    expect(config.githubToken).toBe('new-test-token')
+  })
+
+  test('domain unchanged → cached token reused normally', async () => {
+    // Simulate a persisted config with matching GHE domain and valid token
+    await fs.writeFile(
+      PATHS.CONFIG_PATH,
+      JSON.stringify({
+        githubToken: 'existing-ghe-token',
+        gheDomain: 'corp.ghe.com',
+      }),
+    )
+    await readConfig()
+
+    // Runtime domain matches the persisted one
+    state.auth.gheDomain = 'corp.ghe.com'
+
+    await setupGitHubToken()
+
+    // Cached token should be reused — no device flow triggered
+    expect(mockPollAccessToken).not.toHaveBeenCalled()
+    expect(state.auth.githubToken).toBe('existing-ghe-token')
+  })
+
+  test('both undefined (public github.com) → cached token reused', async () => {
+    // No GHE domain in persisted config, no GHE domain at runtime
+    await fs.writeFile(
+      PATHS.CONFIG_PATH,
+      JSON.stringify({ githubToken: 'public-github-token' }),
+    )
+    await readConfig()
+
+    // state.auth.gheDomain is undefined by default (no GHE)
+
+    await setupGitHubToken()
+
+    // Cached token should be reused
+    expect(mockPollAccessToken).not.toHaveBeenCalled()
+    expect(state.auth.githubToken).toBe('public-github-token')
+  })
+
+  test('switching from GHE back to public → re-auth forced', async () => {
+    // Previously used a GHE domain
+    await fs.writeFile(
+      PATHS.CONFIG_PATH,
+      JSON.stringify({
+        githubToken: 'old-ghe-token',
+        gheDomain: 'corp.ghe.com',
+      }),
+    )
+    await readConfig()
+
+    // Now runtime has no GHE domain (public github.com)
+    state.auth.gheDomain = undefined
+
+    await setupGitHubToken()
+
+    // Domain changed (GHE → public) — must force re-auth
+    expect(mockPollAccessToken).toHaveBeenCalledTimes(1)
+    expect(state.auth.githubToken).toBe('new-test-token')
+  })
+})

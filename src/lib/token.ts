@@ -60,6 +60,21 @@ export async function setupGitHubToken(
     const cachedToken = getCachedConfig().githubToken
     const githubToken = cachedToken?.trim() || ''
 
+    // Domain-change detection: if the configured GHE domain differs from
+    // the previously persisted one, the cached token is for a different
+    // GitHub instance and must not be reused.
+    if (
+      githubToken
+      && !options?.force
+      && isDomainChanged()
+    ) {
+      consola.warn(
+        'GHE domain changed — cached token is for a different GitHub instance. Re-authenticating...',
+      )
+      await setupGitHubToken({ force: true })
+      return
+    }
+
     if (githubToken && !options?.force) {
       state.auth.githubToken = githubToken
       if (state.config.showToken) {
@@ -93,6 +108,11 @@ export async function setupGitHubToken(
     const token = await githubClient.pollAccessToken(response)
     await writeGithubToken(token)
     state.auth.githubToken = token
+
+    // Persist the current GHE domain so future runs can detect domain changes
+    if (state.auth.gheDomain) {
+      await writeConfigField('gheDomain', state.auth.gheDomain)
+    }
 
     if (state.config.showToken) {
       consola.info('GitHub token:', token)
@@ -136,6 +156,16 @@ function normalizeCopilotApiBase(value?: string): string | undefined {
     return undefined
   }
   return value.replace(TRAILING_SLASHES_RE, '')
+}
+
+/**
+ * Detects whether the runtime GHE domain differs from the previously persisted one.
+ * Both `undefined` means "public github.com" → no change → returns false.
+ */
+function isDomainChanged(): boolean {
+  const currentDomain = state.auth.gheDomain
+  const persistedDomain = getCachedConfig().gheDomain
+  return currentDomain !== persistedDomain
 }
 
 async function ensureVSCodeVersion() {

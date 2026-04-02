@@ -23,6 +23,7 @@ interface DebugInfo {
   }
   configExists: boolean
   tokenExists: boolean
+  gheDomain?: string
 }
 
 interface RunDebugOptions {
@@ -74,6 +75,7 @@ async function getDebugInfo(): Promise<DebugInfo> {
     },
     configExists,
     tokenExists: hasToken(),
+    gheDomain: getCachedConfig().gheDomain,
   }
 }
 
@@ -88,7 +90,8 @@ Paths:
 - CONFIG_PATH: ${info.paths.CONFIG_PATH}
 
 Config exists: ${info.configExists ? 'Yes' : 'No'}
-Token exists: ${info.tokenExists ? 'Yes' : 'No'}`)
+Token exists: ${info.tokenExists ? 'Yes' : 'No'}
+GHE Domain: ${info.gheDomain ?? 'none'}`)
 }
 
 export async function runDebug(options: RunDebugOptions): Promise<void> {
