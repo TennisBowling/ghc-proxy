@@ -5,7 +5,7 @@ import os from 'node:os'
 import { defineCommand } from 'citty'
 import consola from 'consola'
 
-import { getCachedConfig } from './lib/config'
+import { getCachedConfig, readConfig } from './lib/config'
 import { PATHS } from './lib/paths'
 import { VERSION } from './lib/version'
 
@@ -23,6 +23,7 @@ interface DebugInfo {
   }
   configExists: boolean
   tokenExists: boolean
+  gheDomain?: string
 }
 
 interface RunDebugOptions {
@@ -63,6 +64,7 @@ async function checkConfigExists(): Promise<boolean> {
 }
 
 async function getDebugInfo(): Promise<DebugInfo> {
+  await readConfig()
   const configExists = await checkConfigExists()
 
   return {
@@ -74,6 +76,7 @@ async function getDebugInfo(): Promise<DebugInfo> {
     },
     configExists,
     tokenExists: hasToken(),
+    gheDomain: getCachedConfig().gheDomain,
   }
 }
 
@@ -88,7 +91,8 @@ Paths:
 - CONFIG_PATH: ${info.paths.CONFIG_PATH}
 
 Config exists: ${info.configExists ? 'Yes' : 'No'}
-Token exists: ${info.tokenExists ? 'Yes' : 'No'}`)
+Token exists: ${info.tokenExists ? 'Yes' : 'No'}
+GHE Domain: ${info.gheDomain ?? 'none'}`)
 }
 
 export async function runDebug(options: RunDebugOptions): Promise<void> {

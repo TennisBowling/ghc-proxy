@@ -5,12 +5,14 @@ import type { ModelsResponse } from '~/types'
 
 import consola from 'consola'
 import { CopilotClient, getVSCodeVersion } from '~/clients'
+import { buildGitHubUrls } from '~/lib/ghe-domain'
 import { responsesEmulatorState } from './responses-emulator-state'
 
 export interface AuthState {
   githubToken?: string
   copilotToken?: string
   copilotApiBase?: string
+  gheDomain?: string
 }
 
 export interface RuntimeConfig {
@@ -54,10 +56,13 @@ export const state: AppState = {
 }
 
 export function getClientConfig(): ClientConfig {
+  const { baseUrl, apiBaseUrl } = buildGitHubUrls(state.auth.gheDomain)
   return {
     accountType: state.config.accountType,
     vsCodeVersion: state.cache.vsCodeVersion,
     copilotApiBase: state.auth.copilotApiBase,
+    githubBaseUrl: baseUrl,
+    githubApiBaseUrl: apiBaseUrl,
   }
 }
 

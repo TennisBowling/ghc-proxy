@@ -48,7 +48,7 @@ export class GitHubClient {
 
   async getCopilotUsage(): Promise<CopilotUsageResponse> {
     return this.requestJson<CopilotUsageResponse>(
-      `${GITHUB_API_BASE_URL}/copilot_internal/user`,
+      `${this.config.githubApiBaseUrl ?? GITHUB_API_BASE_URL}/copilot_internal/user`,
       { headers: githubHeaders(this.auth, this.config) },
       'Failed to get Copilot usage',
     )
@@ -56,7 +56,7 @@ export class GitHubClient {
 
   async getCopilotToken(): Promise<GetCopilotTokenResponse> {
     return this.requestJson<GetCopilotTokenResponse>(
-      `${GITHUB_API_BASE_URL}/copilot_internal/v2/token`,
+      `${this.config.githubApiBaseUrl ?? GITHUB_API_BASE_URL}/copilot_internal/v2/token`,
       { headers: githubHeaders(this.auth, this.config) },
       'Failed to get Copilot token',
     )
@@ -64,7 +64,7 @@ export class GitHubClient {
 
   async getDeviceCode(): Promise<DeviceCodeResponse> {
     return this.requestJson<DeviceCodeResponse>(
-      `${GITHUB_BASE_URL}/login/device/code`,
+      `${this.config.githubBaseUrl ?? GITHUB_BASE_URL}/login/device/code`,
       {
         method: 'POST',
         headers: standardHeaders(),
@@ -84,7 +84,7 @@ export class GitHubClient {
 
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
       const response = await this.fetchImpl(
-        `${GITHUB_BASE_URL}/login/oauth/access_token`,
+        `${this.config.githubBaseUrl ?? GITHUB_BASE_URL}/login/oauth/access_token`,
         {
           method: 'POST',
           headers: standardHeaders(),
@@ -117,7 +117,7 @@ export class GitHubClient {
 
   async getGitHubUser(): Promise<GithubUserResponse> {
     return this.requestJson<GithubUserResponse>(
-      `${GITHUB_API_BASE_URL}/user`,
+      `${this.config.githubApiBaseUrl ?? GITHUB_API_BASE_URL}/user`,
       {
         headers: {
           authorization: `token ${this.auth.githubToken}`,

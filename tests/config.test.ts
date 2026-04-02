@@ -139,4 +139,27 @@ describe('config module', () => {
     expect(shouldUseResponsesOfficialEmulator()).toBe(true)
     expect(getResponsesOfficialEmulatorTtlSeconds()).toBe(60)
   })
+
+  test('writeConfigField() — gheDomain round-trip persists and reads back', async () => {
+    await writeConfigField('gheDomain', 'company.ghe.com')
+
+    const config = await readConfig()
+    expect(config.gheDomain).toBe('company.ghe.com')
+    expect(getCachedConfig().gheDomain).toBe('company.ghe.com')
+  })
+
+  test('writeConfigField() — gheDomain merges with existing config fields', async () => {
+    await fs.writeFile(tempConfigPath, JSON.stringify({ githubToken: 'existing-token' }))
+    await writeConfigField('gheDomain', 'my-enterprise.github.com')
+
+    const content = await fs.readFile(tempConfigPath)
+    const parsed = JSON.parse(content.toString()) as Record<string, unknown>
+    expect(parsed).toEqual({ githubToken: 'existing-token', gheDomain: 'my-enterprise.github.com' })
+  })
+
+  test('readConfig() — gheDomain is optional and absent by default', async () => {
+    await fs.writeFile(tempConfigPath, JSON.stringify({ githubToken: 'token-only' }))
+    const config = await readConfig()
+    expect(config.gheDomain).toBeUndefined()
+  })
 })

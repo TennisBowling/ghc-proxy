@@ -4,7 +4,8 @@ import type { RuntimeConfig } from './lib/state'
 import { defineCommand } from 'citty'
 import consola from 'consola'
 
-import { readConfig } from './lib/config'
+import { getCachedConfig, readConfig } from './lib/config'
+import { normalizeGheDomain } from './lib/ghe-domain'
 import { ensurePaths } from './lib/paths'
 import { initProxyFromEnv } from './lib/proxy'
 import { generateEnvScript } from './lib/shell'
@@ -26,6 +27,7 @@ interface RunServerOptions {
   proxyEnv: boolean
   idleTimeoutSeconds?: number
   upstreamTimeoutSeconds?: number
+  gheDomain?: string
 }
 
 async function maybeCopyClaudeCodeCommand(serverUrl: string): Promise<void> {
@@ -113,6 +115,17 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   await ensurePaths()
   await readConfig()
+
+  // Load persisted GHE domain from config, then override with CLI arg if provided.
+  // Pass --ghe-domain "" (empty string) to explicitly clear a persisted domain.
+  state.auth.gheDomain = getCachedConfig().gheDomain
+  if (options.gheDomain !== undefined) {
+    state.auth.gheDomain = options.gheDomain ? normalizeGheDomain(options.gheDomain) : undefined
+  }
+  if (state.auth.gheDomain && state.config.accountType === 'individual') {
+    state.config.accountType = 'enterprise'
+  }
+
   await cacheVSCodeVersion()
 
   if (!options.githubToken) {
@@ -224,6 +237,11 @@ export const start = defineCommand({
       default: '1800',
       description: 'Upstream request timeout in seconds (0 to disable)',
     },
+    'ghe-domain': {
+      alias: 'ghe',
+      type: 'string',
+      description: 'Company GHE domain for GitHub Enterprise Cloud (e.g. company.ghe.com)',
+    },
   },
   run({ args }) {
     const rateLimit = parseIntArg(args['rate-limit'], 'rate-limit', 'Rate limiting disabled.')
@@ -243,6 +261,7 @@ export const start = defineCommand({
       proxyEnv: args['proxy-env'],
       idleTimeoutSeconds,
       upstreamTimeoutSeconds,
+      gheDomain: args['ghe-domain'],
     })
   },
 })

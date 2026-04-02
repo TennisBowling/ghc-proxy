@@ -6,7 +6,7 @@ import consola from 'consola'
 
 import { GitHubClient } from '~/clients'
 
-import { readConfig } from './lib/config'
+import { getCachedConfig, readConfig } from './lib/config'
 import { ensurePaths } from './lib/paths'
 import { cacheVSCodeVersion, getClientConfig, state } from './lib/state'
 import { setupGitHubToken } from './lib/token'
@@ -19,6 +19,7 @@ export const checkUsage = defineCommand({
   async run() {
     await ensurePaths()
     await readConfig()
+    state.auth.gheDomain = getCachedConfig().gheDomain
     await cacheVSCodeVersion()
     await setupGitHubToken()
     try {
