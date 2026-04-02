@@ -181,7 +181,6 @@ export async function estimateEmulatorInputTokens(
   payload: ResponsesInputTokensPayload,
   selectedModel: Model,
 ): Promise<ResponseInputTokensResult> {
-  rejectUnsupportedBackground(payload)
   const effectiveInputItems = resolveEffectiveInputForInputTokens(payload)
   const inputTokens = await estimateResponsesInputTokens(effectiveInputItems, selectedModel)
   return {
@@ -194,7 +193,21 @@ function resolveEffectiveInputForInputTokens(
   payload: ResponsesInputTokensPayload,
 ): Array<ResponseInputItem> {
   const normalizedInput = normalizeResponsesInput(payload.input)
-  const { continuationSourceResponseId } = resolveContinuation(payload)
+  const background = payload.background === null || typeof payload.background === 'boolean'
+    ? payload.background
+    : undefined
+  const conversation = isConversationReference(payload.conversation)
+    ? payload.conversation
+    : undefined
+  const previousResponseId = typeof payload.previous_response_id === 'string'
+    ? payload.previous_response_id
+    : undefined
+
+  rejectUnsupportedBackground({ background })
+  const { continuationSourceResponseId } = resolveContinuation({
+    conversation,
+    previous_response_id: previousResponseId,
+  })
   if (continuationSourceResponseId) {
     return [
       ...buildContinuationHistory(continuationSourceResponseId),
