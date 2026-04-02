@@ -118,6 +118,7 @@ bunx ghc-proxy@latest debug          # Print diagnostic info (version, paths, to
 | `--proxy-env` | -- | `false` | Use `HTTP_PROXY`/`HTTPS_PROXY` from env (Node.js only; Bun reads proxy env natively) |
 | `--idle-timeout` | -- | `120` | Bun server idle timeout in seconds (`0` disables; Bun max is `255`; streaming routes disable idle timeout automatically) |
 | `--upstream-timeout` | -- | `1800` | Upstream request timeout in seconds (0 to disable) |
+| `--ghe-domain` | `--ghe` | -- | GitHub Enterprise Cloud company domain (e.g. `company.ghe.com`). Required for GHE.com device login on first run; persisted automatically for later runs. |
 
 ## Rate Limiting
 
@@ -146,6 +147,28 @@ bunx ghc-proxy@latest start --account-type enterprise
 ```
 
 This routes requests to the correct Copilot API endpoint for your plan. See the [GitHub docs on network routing](https://docs.github.com/en/enterprise-cloud@latest/copilot/managing-copilot/managing-github-copilot-in-your-organization/managing-access-to-github-copilot-in-your-organization/managing-github-copilot-access-to-your-organizations-network#configuring-copilot-subscription-based-network-routing-for-your-enterprise-or-organization) for details.
+
+### GitHub Enterprise Cloud (GHE.com)
+
+If your organization uses GitHub Enterprise Cloud (`*.ghe.com`), the standard GitHub device login URL differs from `github.com`. Pass your company's GHE domain on first auth:
+
+```bash
+bunx ghc-proxy@latest start --account-type enterprise --ghe-domain company.ghe.com
+```
+
+Or authenticate first, then start without the flag on subsequent runs:
+
+```bash
+# First run (authenticates and persists the domain)
+bunx ghc-proxy@latest auth --ghe-domain company.ghe.com
+
+# Later runs (domain is read from persisted config)
+bunx ghc-proxy@latest start --account-type enterprise
+```
+
+The proxy normalizes and persists the GHE domain automatically after a successful authentication, so you only need to pass `--ghe-domain` on the first run or when switching tenants.
+
+> **Note:** `--account-type enterprise` alone is not sufficient for GHE.com login — the proxy needs the company domain to construct the correct device login URL (`https://<company>.ghe.com/login/device`). GHE.com support is scoped to `*.ghe.com` only and does not apply to self-hosted GitHub Enterprise Server instances.
 
 ## Configuration
 
