@@ -114,8 +114,9 @@ const responsesReasoningSummarySchema = z.object({
 const responsesReasoningInputSchema = z.object({
   id: z.string().optional(),
   type: z.literal('reasoning'),
-  summary: z.array(responsesReasoningSummarySchema),
-  encrypted_content: z.string().min(1),
+  summary: z.array(responsesReasoningSummarySchema).optional(),
+  encrypted_content: z.string().nullable().optional(),
+  status: z.enum(['in_progress', 'completed', 'incomplete']).optional(),
 }).loose()
 
 const responsesCompactionInputSchema = z.object({
