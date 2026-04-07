@@ -40,11 +40,8 @@ export async function handleCompletionCore(
   // Model rewrite (normalize + user rules)
   const rewrite = applyModelRewrite(payload)
   const steps: ModelTransformStep[] = []
-  if (rewrite.reason === 'config_rewrite') {
-    steps.push({ tag: 'CONFIG_REWRITE', result: rewrite.model })
-  }
-  else if (rewrite.reason === 'auto_correct') {
-    steps.push({ tag: 'AUTO_CORRECT', result: rewrite.model })
+  if (rewrite.reason) {
+    steps.push({ tag: rewrite.reason, result: rewrite.model })
   }
 
   const selectedModel = findModelById(payload.model)

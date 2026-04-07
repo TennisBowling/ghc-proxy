@@ -45,12 +45,6 @@ export async function handleResponsesCore(
 
   // Model rewrite (normalize + user rules)
   const rewrite = applyModelRewrite(emulatorPrepared?.upstreamPayload ?? payload)
-  const rewriteStep: ModelMappingInfo['steps'][number] | undefined
-    = rewrite.reason === 'config_rewrite'
-      ? { tag: 'CONFIG_REWRITE', result: rewrite.model }
-      : rewrite.reason === 'auto_correct'
-        ? { tag: 'AUTO_CORRECT', result: rewrite.model }
-        : undefined
 
   const effectivePayload = emulatorPrepared?.upstreamPayload ?? payload
 
@@ -122,7 +116,7 @@ export async function handleResponsesCore(
 
   const modelMapping: ModelMappingInfo = {
     originalModel: rewrite.originalModel,
-    steps: rewriteStep ? [rewriteStep] : [],
+    steps: rewrite.reason ? [{ tag: rewrite.reason, result: rewrite.model }] : [],
   }
 
   return { result, modelMapping }

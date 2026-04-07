@@ -71,19 +71,12 @@ function colorizeMethod(method: string): string {
   return colorize(methodColors[method] ?? 'white', method)
 }
 
-/**
- * Get the effective (final) model from a ModelMappingInfo.
- */
 export function getEffectiveModel(info: ModelMappingInfo): string {
   return info.steps.length > 0
     ? info.steps.at(-1)!.result
     : info.originalModel ?? '-'
 }
 
-/**
- * Append a model transform step if the new model differs from the current effective model.
- * Returns a new ModelMappingInfo (does not mutate the original).
- */
 export function appendModelStep(
   info: ModelMappingInfo,
   tag: ModelTransformTag,

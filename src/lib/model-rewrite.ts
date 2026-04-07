@@ -10,7 +10,7 @@ import { state } from './state'
 export interface ModelRewriteResult {
   model: string
   originalModel: string
-  reason?: 'config_rewrite' | 'auto_correct'
+  reason?: 'AUTO_CORRECT' | 'CONFIG_REWRITE'
 }
 
 // ── Pre-request rewriting ──
@@ -26,7 +26,7 @@ export function rewriteModel(modelId: string): ModelRewriteResult {
     for (const rule of userRules) {
       if (matchesGlob(rule.from, modelId)) {
         const target = normalizeToKnownModel(rule.to) ?? rule.to
-        return { originalModel: modelId, model: target, reason: 'config_rewrite' }
+        return { originalModel: modelId, model: target, reason: 'CONFIG_REWRITE' }
       }
     }
   }
@@ -34,7 +34,7 @@ export function rewriteModel(modelId: string): ModelRewriteResult {
   // 2. Built-in normalization (dash/dot equivalence)
   const normalized = normalizeToKnownModel(modelId)
   if (normalized && normalized !== modelId) {
-    return { originalModel: modelId, model: normalized, reason: 'auto_correct' }
+    return { originalModel: modelId, model: normalized, reason: 'AUTO_CORRECT' }
   }
 
   // 3. Pass-through

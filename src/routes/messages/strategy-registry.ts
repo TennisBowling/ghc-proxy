@@ -174,11 +174,6 @@ const responsesApiEntry: StrategyEntry = {
       throw error
     }
 
-    const modelMapping: ModelMappingInfo = {
-      originalModel: ctx.modelMapping.originalModel,
-      steps: ctx.modelMapping.steps,
-    }
-
     applyContextManagement(
       responsesPayload,
       ctx.selectedModel?.capabilities.limits.max_prompt_tokens,
@@ -197,7 +192,7 @@ const responsesApiEntry: StrategyEntry = {
       },
     )
     const result = await runStrategy(strategy, ctx.upstreamSignal)
-    return { result, modelMapping }
+    return { result, modelMapping: ctx.modelMapping }
   },
 }
 

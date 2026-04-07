@@ -78,11 +78,8 @@ export async function handleMessagesCore(
   // Stage 1: Model rewrite (normalize + user rules)
   const rewrite = applyModelRewrite(anthropicPayload)
   const steps: ModelTransformStep[] = []
-  if (rewrite.reason === 'config_rewrite') {
-    steps.push({ tag: 'CONFIG_REWRITE', result: rewrite.model })
-  }
-  else if (rewrite.reason === 'auto_correct') {
-    steps.push({ tag: 'AUTO_CORRECT', result: rewrite.model })
+  if (rewrite.reason) {
+    steps.push({ tag: rewrite.reason, result: rewrite.model })
   }
 
   // Stage 2: Beta header processing (context-1m upgrade + filter)
