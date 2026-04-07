@@ -6,6 +6,7 @@ import { GitHubClient } from '~/clients'
 
 import { getCachedConfig, writeConfigField } from './config'
 import { HTTPError } from './error'
+import { formatErrorMessage, retryWithBackoff } from './retry'
 import { cacheVSCodeVersion, getClientConfig, state } from './state'
 
 const TRAILING_SLASHES_RE = /\/+$/
@@ -27,24 +28,39 @@ export async function setupCopilotToken() {
 
   const REFRESH_BUFFER_SECONDS = 60
   const refreshInterval = (response.refresh_in - REFRESH_BUFFER_SECONDS) * 1000
-  const refreshCopilotToken = async () => {
-    consola.debug('Refreshing Copilot token')
-    try {
-      const refreshed = await githubClient.getCopilotToken()
-      applyCopilotTokenState(refreshed)
-      consola.debug('Copilot token refreshed')
-      if (state.config.showToken) {
-        consola.info('Refreshed Copilot token:', refreshed.token)
-      }
-    }
-    catch (error) {
-      consola.error('Failed to refresh Copilot token:', error)
+
+  const scheduleRefresh = () => {
+    setTimeout(() => {
+      void refreshCopilotToken(githubClient).then(scheduleRefresh)
+    }, refreshInterval)
+  }
+  scheduleRefresh()
+}
+
+export async function refreshCopilotToken(githubClient: GitHubClient): Promise<void> {
+  consola.debug('Refreshing Copilot token')
+  try {
+    const refreshed = await retryWithBackoff(
+      () => githubClient.getCopilotToken(),
+      {
+        shouldRetry: error => !(error instanceof HTTPError) || isTransientHttpError(error),
+        onRetry: (error, attempt, delayMs) => {
+          consola.warn(
+            `Token refresh failed (attempt ${attempt + 1}), retrying in ${delayMs / 1000}s:`,
+            formatErrorMessage(error),
+          )
+        },
+      },
+    )
+    applyCopilotTokenState(refreshed)
+    consola.debug('Copilot token refreshed')
+    if (state.config.showToken) {
+      consola.info('Refreshed Copilot token:', refreshed.token)
     }
   }
-
-  setInterval(() => {
-    void refreshCopilotToken()
-  }, refreshInterval)
+  catch (error) {
+    consola.error('Failed to refresh Copilot token:', error)
+  }
 }
 
 interface SetupGitHubTokenOptions {
@@ -132,6 +148,12 @@ export async function setupGitHubToken(
 function isAuthError(error: unknown) {
   return error instanceof HTTPError
     && (error.status === 401 || error.status === 403)
+}
+
+const TRANSIENT_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504])
+
+function isTransientHttpError(error: HTTPError): boolean {
+  return TRANSIENT_HTTP_STATUSES.has(error.status)
 }
 
 async function logUser() {
