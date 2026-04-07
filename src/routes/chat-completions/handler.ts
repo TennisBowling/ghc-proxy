@@ -1,12 +1,13 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
-import type { ModelMappingInfo } from '~/lib/request-logger'
-import consola from 'consola'
+import type { ModelMappingInfo, ModelTransformStep } from '~/lib/request-logger'
 
+import consola from 'consola'
 import { CopilotTransport, OpenAIChatAdapter } from '~/adapters'
 import { normalizeChatRequestContext } from '~/core/capi/request-context'
 import { runStrategy } from '~/lib/execution-strategy'
 import { findModelById } from '~/lib/model-capabilities'
 import { applyModelRewrite } from '~/lib/model-rewrite'
+import { appendModelStep } from '~/lib/request-logger'
 import { createCopilotClient } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
@@ -38,8 +39,14 @@ export async function handleCompletionCore(
 
   // Model rewrite (normalize + user rules)
   const rewrite = applyModelRewrite(payload)
+  const steps: ModelTransformStep[] = []
+  if (rewrite.reason === 'config_rewrite') {
+    steps.push({ tag: 'CONFIG_REWRITE', result: rewrite.model })
+  }
+  else if (rewrite.reason === 'auto_correct') {
+    steps.push({ tag: 'AUTO_CORRECT', result: rewrite.model })
+  }
 
-  const originalModel = rewrite.originalModel
   const selectedModel = findModelById(payload.model)
 
   try {
@@ -69,11 +76,11 @@ export async function handleCompletionCore(
     requestContext,
   })
 
-  const modelMapping: ModelMappingInfo = {
-    originalModel,
-    rewrittenModel: rewrite.model,
-    mappedModel: plan.resolvedModel,
-  }
+  const modelMapping = appendModelStep(
+    { originalModel: rewrite.originalModel, steps },
+    'MODEL_RESOLVE',
+    plan.resolvedModel,
+  )
 
   const copilotClient = createCopilotClient()
   const transport = new CopilotTransport(copilotClient)

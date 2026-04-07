@@ -1,9 +1,22 @@
 import { colorize } from 'consola/utils'
 
+export type ModelTransformTag
+  = | 'AUTO_CORRECT'
+    | 'CONFIG_REWRITE'
+    | 'BETA_UPGRADE'
+    | 'CONTEXT_UPGRADE'
+    | 'COMPACT'
+    | 'RETRY_UPGRADE'
+    | 'MODEL_RESOLVE'
+
+export interface ModelTransformStep {
+  tag: ModelTransformTag
+  result: string
+}
+
 export interface ModelMappingInfo {
   originalModel?: string
-  rewrittenModel?: string
-  mappedModel?: string
+  steps: ModelTransformStep[]
 }
 
 /**
@@ -58,31 +71,48 @@ function colorizeMethod(method: string): string {
   return colorize(methodColors[method] ?? 'white', method)
 }
 
+/**
+ * Get the effective (final) model from a ModelMappingInfo.
+ */
+export function getEffectiveModel(info: ModelMappingInfo): string {
+  return info.steps.length > 0
+    ? info.steps.at(-1)!.result
+    : info.originalModel ?? '-'
+}
+
+/**
+ * Append a model transform step if the new model differs from the current effective model.
+ * Returns a new ModelMappingInfo (does not mutate the original).
+ */
+export function appendModelStep(
+  info: ModelMappingInfo,
+  tag: ModelTransformTag,
+  newModel: string,
+): ModelMappingInfo {
+  if (newModel === getEffectiveModel(info))
+    return info
+  return {
+    originalModel: info.originalModel,
+    steps: [...info.steps, { tag, result: newModel }],
+  }
+}
+
 function formatModelMapping(info: ModelMappingInfo | undefined): string {
   if (!info)
     return ''
 
-  const { originalModel, rewrittenModel, mappedModel } = info
-  if (!originalModel && !rewrittenModel && !mappedModel)
+  const { originalModel, steps } = info
+  if (!originalModel && steps.length === 0)
     return ''
 
-  const parts: string[] = []
+  const display = originalModel ?? '-'
+  const parts: string[] = [colorize('blueBright', display)]
 
-  // Start with original model
-  const displayOriginal = originalModel ?? '-'
-  parts.push(colorize('blueBright', displayOriginal))
-
-  // Rewrite arrow (~>)
-  if (rewrittenModel && rewrittenModel !== displayOriginal) {
-    parts.push(colorize('dim', '~>'))
-    parts.push(colorize('cyanBright', rewrittenModel))
-  }
-
-  // Routing arrow (→) — compare against rewritten (if present) or original
-  const effectiveModel = rewrittenModel ?? displayOriginal
-  if (mappedModel && mappedModel !== effectiveModel) {
-    parts.push(colorize('dim', '→'))
-    parts.push(colorize('greenBright', mappedModel))
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]
+    const isLast = i === steps.length - 1
+    parts.push(colorize('dim', `-[${step.tag}]->`))
+    parts.push(colorize(isLast ? 'greenBright' : 'cyanBright', step.result))
   }
 
   return ` ${colorize('dim', 'model=')}${parts.join(' ')}`

@@ -1,5 +1,5 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
-import type { ModelMappingInfo } from '~/lib/request-logger'
+import type { ModelMappingInfo, ModelTransformStep } from '~/lib/request-logger'
 import consola from 'consola'
 
 import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
@@ -77,6 +77,13 @@ export async function handleMessagesCore(
 
   // Stage 1: Model rewrite (normalize + user rules)
   const rewrite = applyModelRewrite(anthropicPayload)
+  const steps: ModelTransformStep[] = []
+  if (rewrite.reason === 'config_rewrite') {
+    steps.push({ tag: 'CONFIG_REWRITE', result: rewrite.model })
+  }
+  else if (rewrite.reason === 'auto_correct') {
+    steps.push({ tag: 'AUTO_CORRECT', result: rewrite.model })
+  }
 
   // Stage 2: Beta header processing (context-1m upgrade + filter)
   const betaResult = processAnthropicBetaHeader(
@@ -86,6 +93,7 @@ export async function handleMessagesCore(
   if (betaResult.upgradeTarget) {
     consola.debug(`Beta header context upgrade: ${anthropicPayload.model} → ${betaResult.upgradeTarget}`)
     anthropicPayload.model = betaResult.upgradeTarget
+    steps.push({ tag: 'BETA_UPGRADE', result: betaResult.upgradeTarget })
   }
 
   // Stage 3: Model policy (skip proactive context upgrade if already upgraded by beta)
@@ -94,10 +102,15 @@ export async function handleMessagesCore(
     anthropicPayload,
     { betaUpgraded: !!betaResult.upgradeTarget },
   )
+  if (modelRouting.reason === 'context-upgrade') {
+    steps.push({ tag: 'CONTEXT_UPGRADE', result: modelRouting.routedModel })
+  }
+  else if (modelRouting.reason === 'compact') {
+    steps.push({ tag: 'COMPACT', result: modelRouting.routedModel })
+  }
   const modelMapping: ModelMappingInfo = {
     originalModel: rewrite.originalModel,
-    rewrittenModel: rewrite.model,
-    mappedModel: modelRouting.routedModel,
+    steps,
   }
 
   if (modelRouting.reason) {
@@ -148,7 +161,10 @@ export async function handleMessagesCore(
       anthropicPayload,
       selectedModel: retryModel,
       upstreamSignal: retrySignal,
-      modelMapping: { originalModel: rewrite.originalModel, rewrittenModel: rewrite.model, mappedModel: upgradeTarget },
+      modelMapping: {
+        originalModel: rewrite.originalModel,
+        steps: [...steps, { tag: 'RETRY_UPGRADE', result: upgradeTarget }],
+      },
     })
   }
 

@@ -17,6 +17,7 @@ import {
   modelSupportsOutputConfig,
   RESPONSES_ENDPOINT,
 } from '~/lib/model-capabilities'
+import { appendModelStep } from '~/lib/request-logger'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 import { translateAnthropicToResponsesPayload } from '~/translator/responses/anthropic-to-responses'
 import { SignatureCodec } from '~/translator/responses/signature-codec'
@@ -175,7 +176,7 @@ const responsesApiEntry: StrategyEntry = {
 
     const modelMapping: ModelMappingInfo = {
       originalModel: ctx.modelMapping.originalModel,
-      mappedModel: responsesPayload.model,
+      steps: ctx.modelMapping.steps,
     }
 
     applyContextManagement(
@@ -218,10 +219,7 @@ const chatCompletionsEntry: StrategyEntry = {
       throw error
     }
 
-    const modelMapping: ModelMappingInfo = {
-      originalModel: ctx.modelMapping.originalModel,
-      mappedModel: plan.resolvedModel,
-    }
+    const modelMapping = appendModelStep(ctx.modelMapping, 'MODEL_RESOLVE', plan.resolvedModel)
 
     consola.debug(
       'Claude Code requested model:',

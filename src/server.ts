@@ -37,7 +37,7 @@ export function createServer(options?: ServerOptions) {
         ? (body as Record<string, unknown>).model
         : undefined
       if (typeof model === 'string') {
-        setRequestModelMapping(request, { originalModel: model, mappedModel: model })
+        setRequestModelMapping(request, { originalModel: model, steps: [] })
       }
     })
     .onAfterResponse(({ request, requestStart, set }) => {
