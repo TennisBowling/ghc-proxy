@@ -95,6 +95,27 @@ The same applies to the broader Responses resource surface. As of March 11, 2026
 
 Those routes are still exposed by the proxy because they belong to the official OpenAI Responses surface, but current Copilot upstream support is not there yet.
 
+### Server-side tool support
+
+As of April 7, 2026, the Copilot `/v1/messages` endpoint recognizes type-based (server-side) tools but support varies per model. A comprehensive probe across all Claude models showed:
+
+| Tool type | Universally supported | Notes |
+|-----------|----------------------|-------|
+| Standard function tools (`input_schema`) | Yes | All models |
+| `bash_20250124` | Yes | All models |
+| `text_editor_20250728` | Yes | All models (name must be `str_replace_based_edit_tool`) |
+| `custom` | Yes | All models |
+| `memory_20250818` | Partial | Opus 4.6, Sonnet 4.5, Haiku 4.5 only |
+| `tool_search_tool_*` | Partial | Opus 4.6, Sonnet 4.5 only |
+| `web_search_20250305` | No | Tag registered but policy-blocked on all models |
+| `text_editor_20250124/0429` | No | Deprecated; newer models reject them |
+| `code_execution_20250522` | No | Tag not registered |
+| `computer_20250124` | No | Tag not registered |
+
+On the `/responses` endpoint (GPT models only), `web_search_preview` and custom tools (`apply_patch`, `shell`) are accepted. `file_search`, `code_interpreter`, `computer_use_preview`, `image_generation`, and `mcp` are rejected.
+
+Run `bun scripts/probe-all-copilot-tools.ts --json` to get a current snapshot. Weekly diffs detect backend changes.
+
 ## Streaming Guarantees
 
 The Responses streaming translator is stateful and emits Anthropic stream events with protocol-level error frames when translation fails. Current guarantees:

@@ -489,3 +489,20 @@ bun run matrix:live --stateful-only --json --model=gpt-5.2-codex
 > - `--stateful-only`: run follow-up/resource probes such as `previous_response_id`, `input_tokens`, and `input_items`
 > - `--all-responses-models`: scan every model that advertises `/responses`
 > - `--model=<id>`: pin the Responses scan to one specific model
+
+### Tool Support Probe
+
+Tests which server-side tool types (bash, text_editor, web_search, memory, etc.) each Copilot model actually accepts. Useful for tracking backend changes over time.
+
+```bash
+bun scripts/probe-all-copilot-tools.ts              # human-readable table
+bun scripts/probe-all-copilot-tools.ts --json        # JSON snapshot to stdout
+bun scripts/probe-all-copilot-tools.ts --model=claude-opus-4.6  # single model
+```
+
+The JSON output is designed for weekly diffing — `generatedAt` is the only volatile field:
+
+```bash
+# Compare two weekly snapshots
+diff <(jq -S 'del(.generatedAt)' week1.json) <(jq -S 'del(.generatedAt)' week2.json)
+```

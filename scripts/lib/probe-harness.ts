@@ -149,7 +149,7 @@ export function runMain(main: () => Promise<void>): void {
     })
 }
 
-function tryParseJson(text: string): unknown {
+export function tryParseJson(text: string): unknown {
   try {
     return JSON.parse(text)
   }
