@@ -1,15 +1,15 @@
-import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { CopilotClient } from '~/clients'
 import type { CapiRequestContext } from '~/core/capi'
 import type { ExecutionStrategy, SSEStreamChunk } from '~/lib/execution-strategy'
 import type { ResponsesPayload, ResponsesResult } from '~/types'
+import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import consola from 'consola'
 
 import { isAsyncIterable } from '~/lib/async-iterable'
 import { HTTPError } from '~/lib/error'
 import { passthroughSSEChunk } from '~/lib/execution-strategy'
+import { PATHS } from '~/lib/paths'
 
 interface StreamIdState {
   responseId?: string
@@ -173,22 +173,25 @@ function tryExtractTerminalResponse(rawData: string): ResponsesResult | undefine
   return undefined
 }
 
-const DUMP_DIR = join(homedir(), '.ghc-proxy', 'dumps')
+const DUMP_DIR = join(PATHS.APP_DIR, 'dumps')
 const MAX_DUMPS = 20
+const TIMESTAMP_CHARS_RE = /[:.]/g
+const DUMP_FILE_RE = /^\d{3}-/
 
 async function dumpFailedPayload(payload: unknown, error: HTTPError): Promise<void> {
   try {
     await mkdir(DUMP_DIR, { recursive: true })
-    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const now = new Date().toISOString()
+    const ts = now.replace(TIMESTAMP_CHARS_RE, '-')
     const file = join(DUMP_DIR, `${error.status}-${ts}.json`)
     await writeFile(file, JSON.stringify({
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       error: { status: error.status, message: error.message },
       payload,
     }, null, 2))
     consola.warn(`Dumped failed /responses payload → ${file}`)
     const files = await readdir(DUMP_DIR)
-    const dumps = files.filter(f => /^\d{3}-/.test(f) && f.endsWith('.json')).sort()
+    const dumps = files.filter(f => DUMP_FILE_RE.test(f) && f.endsWith('.json')).sort()
     if (dumps.length > MAX_DUMPS) {
       await Promise.all(dumps.slice(0, dumps.length - MAX_DUMPS).map(f => unlink(join(DUMP_DIR, f)).catch(() => {})))
     }

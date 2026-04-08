@@ -236,8 +236,13 @@ function stripPhaseFromInputMessages(payload: ResponsesPayload): void {
 
   let stripped = 0
   for (const item of payload.input) {
-    if (typeof item === 'object' && item !== null && (!('type' in item) || (item as Record<string, unknown>).type === 'message') && 'phase' in item) {
-      delete (item as Record<string, unknown>).phase
+    if (typeof item !== 'object' || item === null) {
+      continue
+    }
+    const rec = item as Record<string, unknown>
+    const isMessage = !('type' in rec) || rec.type === 'message'
+    if (isMessage && 'phase' in rec) {
+      delete rec.phase
       stripped++
     }
   }
@@ -258,11 +263,14 @@ function stripUnresolvableInputItems(payload: ResponsesPayload): void {
     return
   }
 
-  // Collect all function_call call_ids present in the input
   const functionCallIds = new Set<string>()
   for (const item of payload.input) {
-    if (typeof item === 'object' && item !== null && (item as Record<string, unknown>).type === 'function_call' && typeof (item as Record<string, unknown>).call_id === 'string') {
-      functionCallIds.add((item as Record<string, unknown>).call_id as string)
+    if (typeof item !== 'object' || item === null) {
+      continue
+    }
+    const rec = item as Record<string, unknown>
+    if (rec.type === 'function_call' && typeof rec.call_id === 'string') {
+      functionCallIds.add(rec.call_id)
     }
   }
 
@@ -274,12 +282,10 @@ function stripUnresolvableInputItems(payload: ResponsesPayload): void {
 
     const rec = item as Record<string, unknown>
 
-    // Strip item_reference — unresolvable without server-side store
     if (rec.type === 'item_reference') {
       return false
     }
 
-    // Strip orphaned function_call_output — no matching function_call
     if (
       rec.type === 'function_call_output'
       && typeof rec.call_id === 'string'
