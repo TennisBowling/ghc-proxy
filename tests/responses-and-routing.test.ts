@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bu
 
 import { CopilotClient } from '~/clients'
 import { getCachedConfig } from '~/lib/config'
+import { HTTPError } from '~/lib/error'
 import { state } from '~/lib/state'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 import { translateAnthropicToResponsesPayload } from '~/translator/responses/anthropic-to-responses'
@@ -838,6 +839,261 @@ describe('responses and routing', () => {
     }))
 
     expect(response.status).toBe(400)
+  })
+
+  test('/v1/responses forces store=false on all upstream requests', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_store',
+      model: 'gpt-4.1',
+      status: 'completed',
+      usage: null,
+    }), calls)
+
+    // Client sends store=true, but the proxy must override to false
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        store: true,
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.store).toBe(false)
+  })
+
+  test('/v1/responses forces store=false even when client omits it', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_store_default',
+      model: 'gpt-4.1',
+      status: 'completed',
+      usage: null,
+    }), calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.store).toBe(false)
+  })
+
+  test('/v1/responses strips item_reference items from input', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_strip_ref',
+      model: 'gpt-4.1',
+      status: 'completed',
+      usage: null,
+    }), calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [
+          { type: 'message', role: 'user', content: 'hello' },
+          { type: 'item_reference', id: 'msg_fake_ref_001' },
+          { type: 'item_reference', id: 'msg_fake_ref_002' },
+          { type: 'message', role: 'user', content: 'follow up' },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.input).toEqual([
+      { type: 'message', role: 'user', content: 'hello' },
+      { type: 'message', role: 'user', content: 'follow up' },
+    ])
+  })
+
+  test('/v1/responses strips orphaned function_call_output items from input', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_strip_orphan',
+      model: 'gpt-4.1',
+      status: 'completed',
+      usage: null,
+    }), calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [
+          { type: 'message', role: 'user', content: 'hello' },
+          // This function_call has a matching output — both should survive
+          { type: 'function_call', call_id: 'call_1', name: 'test', arguments: '{}', status: 'completed' },
+          { type: 'function_call_output', call_id: 'call_1', output: 'result 1' },
+          // This output has no matching function_call — should be stripped
+          { type: 'function_call_output', call_id: 'call_orphan', output: 'orphan result' },
+          { type: 'message', role: 'user', content: 'continue' },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.input).toEqual([
+      { type: 'message', role: 'user', content: 'hello' },
+      { type: 'function_call', call_id: 'call_1', name: 'test', arguments: '{}', status: 'completed' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'result 1' },
+      { type: 'message', role: 'user', content: 'continue' },
+    ])
+  })
+
+  test('/v1/responses strips both item_reference and orphaned function_call_output together', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_strip_combo',
+      model: 'gpt-4.1',
+      status: 'completed',
+      usage: null,
+    }), calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [
+          { type: 'message', role: 'user', content: 'hello' },
+          { type: 'item_reference', id: 'msg_ref_1' },
+          { type: 'function_call_output', call_id: 'call_gone', output: 'stale' },
+          { type: 'message', role: 'user', content: 'continue' },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.input).toEqual([
+      { type: 'message', role: 'user', content: 'hello' },
+      { type: 'message', role: 'user', content: 'continue' },
+    ])
+  })
+
+  test('/v1/responses strips phase field from input message items', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_strip_phase',
+      model: 'gpt-4.1',
+      status: 'completed',
+      usage: null,
+    }), calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [
+          { type: 'message', role: 'user', content: 'hello', phase: 'commentary' },
+          { type: 'message', role: 'assistant', content: 'hi', phase: 'final_answer' },
+          { type: 'message', role: 'user', content: 'follow up' },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    const forwardedInput = calls[0]?.payload.input as Array<Record<string, unknown>>
+    expect(forwardedInput).toHaveLength(3)
+    // phase should be stripped from all items that had it
+    for (const item of forwardedInput) {
+      expect(item).not.toHaveProperty('phase')
+    }
+    // Other fields should be preserved
+    expect(forwardedInput[0]).toMatchObject({ type: 'message', role: 'user', content: 'hello' })
+    expect(forwardedInput[1]).toMatchObject({ type: 'message', role: 'assistant', content: 'hi' })
+    expect(forwardedInput[2]).toMatchObject({ type: 'message', role: 'user', content: 'follow up' })
+  })
+
+  test('/v1/responses preserves input when no stripping is needed', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_no_strip',
+      model: 'gpt-4.1',
+      status: 'completed',
+      usage: null,
+    }), calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [
+          { type: 'message', role: 'user', content: 'hello' },
+          { type: 'function_call', call_id: 'call_1', name: 'test', arguments: '{}', status: 'completed' },
+          { type: 'function_call_output', call_id: 'call_1', output: 'result' },
+          { type: 'message', role: 'user', content: 'next' },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.input).toEqual([
+      { type: 'message', role: 'user', content: 'hello' },
+      { type: 'function_call', call_id: 'call_1', name: 'test', arguments: '{}', status: 'completed' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'result' },
+      { type: 'message', role: 'user', content: 'next' },
+    ])
+  })
+
+  test('/v1/responses surfaces upstream 400 errors (triggering payload dump)', async () => {
+    const app = createApp()
+    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+
+    // Mock createResponses to throw HTTPError(400) — this exercises the
+    // strategy.ts catch block that calls dumpFailedPayload
+    CopilotClient.prototype.createResponses = (() => {
+      throw new HTTPError(400, {
+        error: { message: 'Invalid request', type: 'invalid_request_error' },
+      })
+    }) as typeof CopilotClient.prototype.createResponses
+
+    const response = await app.handle(new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        input: [{ type: 'message', role: 'user', content: 'hello' }],
+      }),
+    }))
+
+    expect(response.status).toBe(400)
+    const json = await response.json() as { error?: { message?: string } }
+    expect(json.error?.message).toBe('Invalid request')
   })
 
   test('/v1/responses consumes subagent markers and forwards root session context', async () => {

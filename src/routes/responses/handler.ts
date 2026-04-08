@@ -2,6 +2,7 @@ import type { ExecutionResult } from '~/lib/execution-strategy'
 import type { ModelMappingInfo } from '~/lib/request-logger'
 
 import type { ResponseFunctionTool, ResponsesPayload, ResponsesResult, ResponseTool } from '~/types'
+import consola from 'consola'
 import { normalizeResponsesRequestContext, resolveInitiator } from '~/core/capi/request-context'
 import { shouldUseFunctionApplyPatch, shouldUseResponsesOfficialEmulator } from '~/lib/config'
 import { throwInvalidRequestError } from '~/lib/error'
@@ -214,7 +215,88 @@ function rejectUnsupportedBuiltinTools(payload: ResponsesPayload): void {
 }
 
 function applyResponsesInputPolicies(payload: ResponsesPayload): void {
+  // Force store=false so Copilot never returns opaque item IDs that it
+  // cannot resolve on subsequent requests (→ 404). Clients should also
+  // set { "store": false } in their Provider Options.
+  payload.store = false
+
+  stripUnresolvableInputItems(payload)
+  stripPhaseFromInputMessages(payload)
   rejectUnsupportedRemoteImageUrls(payload)
+}
+
+/**
+ * Strip `phase` from input message items. The `phase` field is an output
+ * annotation that some models may reject when sent back as input.
+ */
+function stripPhaseFromInputMessages(payload: ResponsesPayload): void {
+  if (!Array.isArray(payload.input)) {
+    return
+  }
+
+  let stripped = 0
+  for (const item of payload.input) {
+    if (typeof item === 'object' && item !== null && (!('type' in item) || (item as Record<string, unknown>).type === 'message') && 'phase' in item) {
+      delete (item as Record<string, unknown>).phase
+      stripped++
+    }
+  }
+
+  if (stripped > 0) {
+    consola.debug(`Stripped phase from ${stripped} input message item(s)`)
+  }
+}
+
+/**
+ * Remove input items that Copilot cannot resolve and would trigger 404:
+ * - `item_reference` items (opaque IDs from store=true sessions)
+ * - `function_call_output` items whose `call_id` has no matching prior
+ *   `function_call` in the same input array (orphaned outputs)
+ */
+function stripUnresolvableInputItems(payload: ResponsesPayload): void {
+  if (!Array.isArray(payload.input)) {
+    return
+  }
+
+  // Collect all function_call call_ids present in the input
+  const functionCallIds = new Set<string>()
+  for (const item of payload.input) {
+    if (typeof item === 'object' && item !== null && (item as Record<string, unknown>).type === 'function_call' && typeof (item as Record<string, unknown>).call_id === 'string') {
+      functionCallIds.add((item as Record<string, unknown>).call_id as string)
+    }
+  }
+
+  const originalLength = payload.input.length
+  payload.input = payload.input.filter((item) => {
+    if (typeof item !== 'object' || item === null) {
+      return true
+    }
+
+    const rec = item as Record<string, unknown>
+
+    // Strip item_reference — unresolvable without server-side store
+    if (rec.type === 'item_reference') {
+      return false
+    }
+
+    // Strip orphaned function_call_output — no matching function_call
+    if (
+      rec.type === 'function_call_output'
+      && typeof rec.call_id === 'string'
+      && !functionCallIds.has(rec.call_id)
+    ) {
+      return false
+    }
+
+    return true
+  })
+
+  if (payload.input.length !== originalLength) {
+    consola.debug(
+      `Stripped ${originalLength - payload.input.length} unresolvable input items`
+      + ` (item_reference / orphaned function_call_output)`,
+    )
+  }
 }
 
 function rejectUnsupportedRemoteImageUrls(payload: ResponsesPayload): void {

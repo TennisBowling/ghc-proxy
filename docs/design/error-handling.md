@@ -26,15 +26,16 @@ Caught during protocol translation:
 
 ### Upstream Errors (Pass-through)
 
-Errors from GitHub Copilot's API are forwarded to the client as-is:
+Errors from GitHub Copilot's API are forwarded to the client with the upstream status code and body:
 
 ```typescript
 class HTTPError extends Error {
-  response: Response // Original upstream response
+  status: number        // HTTP status code
+  body: HTTPErrorBody   // Structured error payload
 }
 ```
 
-The upstream error helper extracts the response body and status code. If the upstream body is empty or non-JSON, the client gets the fallback proxy error message while logs still include upstream status metadata and a safe body preview.
+The upstream error helper (`throwUpstreamError`) extracts the response body and status code. If the upstream body is empty or non-JSON, the client gets the fallback proxy error message while logs still include upstream status metadata and a safe body preview.
 
 ### Streaming Errors
 
@@ -54,7 +55,7 @@ This preserves the SSE connection and gives the client structured error informat
 
 ## Validation Architecture
 
-### Zod Schemas (`src/lib/validation.ts`)
+### Zod Schemas (`src/lib/validation/`)
 
 All request payloads are validated at the route handler level:
 
@@ -95,31 +96,35 @@ class TranslationContext {
 
 ```typescript
 interface TranslationIssue {
-  kind: 'exact' | 'lossy' | 'unsupported'
-  code: string // e.g., 'lossy_thinking_omitted_from_prompt'
-  message: string // Human-readable description
+  kind: string                         // e.g., 'unsupported_stop_sequences'
+  severity: 'info' | 'warning' | 'error'
+  message: string                      // Human-readable description
 }
 ```
 
-Issue codes used in the codebase:
+Issue kinds used in the codebase:
 
-| Code                                    | Kind        | Description                                           |
+| Kind                                    | Severity    | Description                                           |
 |-----------------------------------------|-------------|-------------------------------------------------------|
-| `lossy_thinking_omitted_from_prompt`   | lossy       | Thinking history blocks removed from upstream prompt  |
-| `lossy_interleaving_flattened`         | lossy       | Text/tool_use interleaving flattened in assistant turn |
-| `lossy_multiple_choices_ignored`       | lossy       | Only choice[0] used from multi-choice response        |
-| `unsupported_top_k`                    | unsupported | `top_k` parameter cannot be translated                |
-| `unsupported_service_tier`             | unsupported | `service_tier` parameter cannot be translated         |
+| `lossy_thinking_omitted_from_prompt`   | warning     | Thinking history blocks removed from upstream prompt  |
+| `lossy_interleaving_flattened`         | warning     | Text/tool_use interleaving flattened in assistant turn |
+| `lossy_multiple_choices_ignored`       | warning     | Only choice[0] used from multi-choice response        |
+| `unsupported_top_k`                    | error       | `top_k` parameter cannot be translated                |
+| `unsupported_service_tier`             | error       | `service_tier` parameter cannot be translated         |
+| `unsupported_stop_sequences`           | error       | `stop_sequences` cannot be forwarded on Responses path |
 
 ## Error Classes
 
 ### `HTTPError`
 
-Wraps an upstream HTTP response that indicates failure:
+Elysia-native error class with `status` property and `toResponse()`. Elysia auto-handles this via `toResponse()` when thrown in route handlers:
 
 ```typescript
 class HTTPError extends Error {
-  response: Response
+  status: number       // HTTP status code
+  body: HTTPErrorBody  // Structured { error: { message, type, param?, code? } }
+
+  toResponse(): Response  // Returns Response.json(body, { status })
 }
 ```
 
@@ -129,8 +134,8 @@ Thrown when a translation issue is fatal:
 
 ```typescript
 class TranslationFailure extends Error {
-  status: number // HTTP status code (usually 400)
-  kind: string // Issue kind
+  status: 400 | 502   // HTTP status code
+  kind: string         // Issue kind (e.g., 'unsupported_stop_sequences')
 }
 ```
 
@@ -141,15 +146,14 @@ Convenience for Anthropic-format validation errors:
 ```typescript
 function throwInvalidRequestError(
   message: string,
-  param?: string,
+  param: string,
   code?: string
 ): never
 ```
 
-Throws an error that the route handler converts to:
+Throws an `HTTPError` that Elysia converts to:
 ```json
 {
-  "type": "error",
   "error": {
     "type": "invalid_request_error",
     "message": "...",

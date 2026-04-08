@@ -22,6 +22,8 @@ Investigation notes and findings from upstream API behavior analysis.
 | Document | Description |
 |----------|-------------|
 | [Copilot Token Usage](research/copilot-token-usage.md) | How Copilot returns token usage across all API paths |
+| [Competitive Analysis: LiteLLM](research/competitive-analysis-litellm.md) | LiteLLM proxy comparison and feature gap analysis |
+| [Environment Variables](research/environment-variables.md) | Environment variable reference and configuration |
 
 ## Reference
 
@@ -29,7 +31,8 @@ Investigation notes and findings from upstream API behavior analysis.
 |----------|-------------|
 | [Anthropic Translation Matrix](anthropic-translation-matrix.md) | Field-level translation compatibility for the chat-completions fallback |
 | [Messages Routing and Translation](messages-routing-and-translation.md) | Per-model routing decision logic and Responses API compatibility |
-| [Responses Upstream Notes](responses-upstream-notes.md) | Live upstream compatibility observations for the Responses API path |
+| [Responses Stream Compatibility](responses-stream-compatibility.md) | Streaming identity normalization contract for the `/v1/responses` passthrough path |
+| [Responses Upstream Notes](responses-upstream-notes.md) | Live upstream compatibility observations and input sanitization policies |
 
 ## Testing Notes
 

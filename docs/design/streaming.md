@@ -21,7 +21,7 @@ Upstream SSE Stream (Copilot)
 [Stream Translator]           Format-specific event translation
         |
         v
-[Hono streamSSE]             Write SSE events to client
+[Elysia SSE]                 Write SSE events to client
         |
         v
 Client SSE Stream

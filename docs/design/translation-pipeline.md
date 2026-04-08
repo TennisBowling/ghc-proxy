@@ -140,10 +140,12 @@ class TranslationContext {
 }
 ```
 
-Issue classifications:
-- **exact** -- semantics fully preserved
-- **lossy** -- best-effort conversion with some loss (recorded as warning)
-- **unsupported** -- cannot be translated (400 error in strict mode)
+Issue severity levels:
+- **info** -- semantics fully preserved
+- **warning** -- best-effort conversion with some semantic loss
+- **error** -- cannot be translated (throws `TranslationFailure` with 400 in strict mode)
+
+Issue `kind` strings follow a naming convention that indicates the category: `lossy_*` for warning-level semantic loss, `unsupported_*` for error-level incompatibilities.
 
 ## Anthropic <-> Responses Pipeline
 

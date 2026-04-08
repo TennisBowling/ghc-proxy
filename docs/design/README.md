@@ -14,6 +14,7 @@ Architecture and design documentation for ghc-proxy.
 | [Streaming](streaming.md) | SSE streaming architecture, per-path translation, and error recovery |
 | [Error Handling](error-handling.md) | Error classification, validation, translation policy, and error flow |
 | [State and Configuration](state-and-config.md) | Global state management, config file, CLI flags, and startup sequence |
+| [Migration: Hono → Elysia](migration-hono-to-elysia.md) | Completed framework migration from Hono to Elysia |
 
 ## Related Documentation
 
@@ -21,5 +22,6 @@ Architecture and design documentation for ghc-proxy.
 |----------|----------|
 | [Anthropic Translation Matrix](../anthropic-translation-matrix.md) | Detailed translation compatibility matrix for the chat-completions fallback path |
 | [Messages Routing and Translation](../messages-routing-and-translation.md) | Per-model routing decision logic and Responses API compatibility policies |
+| [Responses Stream Compatibility](../responses-stream-compatibility.md) | Streaming identity normalization contract for the `/v1/responses` passthrough path |
 | [Copilot Token Usage](../research/copilot-token-usage.md) | How Copilot returns token usage across all API paths, and local estimation via gpt-tokenizer |
 | [Tool Support Probe](../../scripts/probe-all-copilot-tools.ts) | Tests which server-side tool types each Copilot model accepts (`--json` for diffable snapshots) |

@@ -23,6 +23,7 @@ interface AuthState {
   githubToken?: string // GitHub personal access token
   copilotToken?: string // Copilot API token (derived from GitHub token)
   copilotApiBase?: string // Copilot API base URL
+  gheDomain?: string // GitHub Enterprise domain (optional)
 }
 ```
 
@@ -47,6 +48,7 @@ interface RuntimeConfig {
 interface CacheState {
   models?: ModelsResponse // Cached model list from Copilot
   vsCodeVersion?: string // Cached VS Code version string
+  githubLogin?: string // Cached GitHub username
 }
 ```
 
@@ -76,9 +78,16 @@ interface ConfigFile {
     claudeHaiku?: string // Fallback for claude-haiku-* models
   }
 
+  // Model rewrites
+  modelRewrites?: Array<{ from: string, to: string }> // Glob-based model ID rewriting rules
+
   // Small model routing
   smallModel?: string // Target model for rerouting
   compactUseSmallModel?: boolean // Reroute compact/summarize requests
+
+  // Context upgrade
+  contextUpgrade?: boolean // Enable/disable context upgrade signals
+  contextUpgradeTokenThreshold?: number // Token count threshold for proactive upgrade
 
   // Responses API
   useFunctionApplyPatch?: boolean // Rewrite apply_patch custom tool
@@ -90,6 +99,9 @@ interface ConfigFile {
 
   // Reasoning
   modelReasoningEfforts?: Record<string, ReasoningEffort> // Per-model effort defaults
+
+  // GitHub Enterprise
+  gheDomain?: string // GitHub Enterprise domain
 }
 ```
 

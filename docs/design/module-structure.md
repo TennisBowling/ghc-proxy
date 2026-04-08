@@ -153,14 +153,19 @@ ConversationRequest
 | `execution-strategy.ts`     | Generic ExecutionStrategy interface and executor     |
 | `state.ts`                  | Global AppState (auth, config, cache, rate limit)    |
 | `model-resolver.ts`         | Model ID resolution with configurable fallbacks      |
+| `model-rewrite.ts`          | Unified model rewrite (user rules, normalization, context upgrade) |
 | `model-capabilities.ts`     | Query model endpoint support and capabilities        |
 | `request-model-policy.ts`   | Smart model rerouting (compact detection)             |
+| `function-schema.ts`        | Normalize function tool parameter schemas for Copilot compatibility |
 | `api-config.ts`             | Copilot base URL, headers, request ID generation     |
-| `validation.ts`             | Zod schemas for all request/response types           |
+| `validation/`               | Zod schemas for all request/response types (anthropic-messages, openai-chat, responses, embeddings, shared) |
 | `error.ts`                  | HTTPError class, error forwarding, validation errors |
 | `config.ts`                 | Config file reader (~/.ghc-proxy/config.json)        |
+| `ghe-domain.ts`             | GitHub Enterprise domain URL resolution              |
 | `rate-limit.ts`             | Request throttling (queue or error mode)             |
 | `upstream-signal.ts`        | AbortSignal management for upstream requests         |
+| `retry.ts`                  | Retry logic with exponential backoff                 |
+| `request-timeout.ts`        | Request timeout helpers                              |
 | `tokenizer.ts`              | Local token estimation via gpt-tokenizer (used only by `count_tokens` endpoint, not for response usage) |
 | `request-logger.ts`         | Structured request/response logging                  |
 | `async-iterable.ts`         | Streaming helpers                                    |

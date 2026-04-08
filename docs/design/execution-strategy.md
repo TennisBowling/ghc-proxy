@@ -16,7 +16,7 @@ Without a shared abstraction, each route handler would duplicate the streaming/n
 
 ## The Solution
 
-The `ExecutionStrategy<TResult, TChunk>` interface captures the varying parts, while `executeStrategy()` handles the invariant plumbing.
+The `ExecutionStrategy<TResult, TChunk>` interface captures the varying parts, while `runStrategy()` handles the invariant plumbing.
 
 ### Interface
 
@@ -48,17 +48,16 @@ interface ExecutionStrategy<TResult, TChunk> {
 ### Executor
 
 ```typescript
-async function executeStrategy<TResult, TChunk>(
-  c: Context,
+async function runStrategy<TResult, TChunk>(
   strategy: ExecutionStrategy<TResult, TChunk>,
-  signal: { signal: AbortSignal, cleanup: () => void },
-): Promise<Response>
+  signal: { signal: AbortSignal, clientSignal?: AbortSignal, cleanup: () => void },
+): Promise<ExecutionResult>
 ```
 
 The executor:
 1. Calls `strategy.execute()` to get the upstream result
-2. If non-streaming: returns `c.json(strategy.translateResult(result))`
-3. If streaming: iterates the async iterable, translating each chunk via `translateStreamChunk`, writing SSE events via Hono's `streamSSE`
+2. If non-streaming: returns `{ kind: 'json', data: strategy.translateResult(result) }`
+3. If streaming: iterates the async iterable, translating each chunk via `translateStreamChunk`, yielding `SSEOutput` events via an `AsyncGenerator`
 4. On stream completion: calls `onStreamDone()` for any final events
 5. On stream error (if client not aborted): calls `onStreamError()` for error events
 6. Always calls `signal.cleanup()` in the finally block
