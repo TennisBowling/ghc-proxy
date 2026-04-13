@@ -33,11 +33,31 @@ const anthropicThinkingBlockSchema = z.object({
   signature: z.string().optional(),
 }).loose()
 
+const anthropicRedactedThinkingBlockSchema = z.object({
+  type: z.literal('redacted_thinking'),
+  data: z.string(),
+}).loose()
+
 const anthropicToolUseBlockSchema = z.object({
   type: z.literal('tool_use'),
   id: z.string().min(1),
   name: z.string().min(1),
   input: jsonObjectSchema,
+}).loose()
+
+const anthropicServerToolUseBlockSchema = z.object({
+  type: z.literal('server_tool_use'),
+  id: z.string().min(1),
+  name: z.string().min(1),
+  input: jsonObjectSchema,
+}).loose()
+
+const anthropicMcpToolUseBlockSchema = z.object({
+  type: z.literal('mcp_tool_use'),
+  id: z.string().min(1),
+  name: z.string().min(1),
+  input: jsonObjectSchema,
+  server_name: z.string().min(1),
 }).loose()
 
 const anthropicToolResultContentBlockSchema = z.union([
@@ -55,6 +75,36 @@ const anthropicToolResultBlockSchema = z.object({
   is_error: z.boolean().optional(),
 }).loose()
 
+const anthropicMcpToolResultBlockSchema = z.object({
+  type: z.literal('mcp_tool_result'),
+  tool_use_id: z.string().min(1),
+  content: z.union([
+    z.string(),
+    z.array(anthropicToolResultContentBlockSchema),
+  ]),
+  is_error: z.boolean().optional(),
+}).loose()
+
+const anthropicServerToolResultBlockSchema = z.object({
+  type: z.enum([
+    'server_tool_result',
+    'web_search_tool_result',
+    'web_fetch_tool_result',
+    'code_execution_tool_result',
+    'bash_code_execution_tool_result',
+    'text_editor_code_execution_tool_result',
+    'tool_search_tool_result',
+  ]),
+  tool_use_id: z.string().min(1),
+  content: z.unknown(),
+  is_error: z.boolean().optional(),
+}).loose()
+
+const anthropicDocumentBlockSchema = z.object({
+  type: z.literal('document'),
+  source: jsonObjectSchema,
+}).loose()
+
 const anthropicUserMessageSchema = z.object({
   role: z.literal('user'),
   content: z.union([
@@ -63,6 +113,9 @@ const anthropicUserMessageSchema = z.object({
       anthropicTextBlockSchema,
       anthropicImageBlockSchema,
       anthropicToolResultBlockSchema,
+      anthropicMcpToolResultBlockSchema,
+      anthropicServerToolResultBlockSchema,
+      anthropicDocumentBlockSchema,
     ])),
   ]),
 }).loose()
@@ -74,7 +127,12 @@ const anthropicAssistantMessageSchema = z.object({
     z.array(z.union([
       anthropicTextBlockSchema,
       anthropicThinkingBlockSchema,
+      anthropicRedactedThinkingBlockSchema,
       anthropicToolUseBlockSchema,
+      anthropicServerToolUseBlockSchema,
+      anthropicMcpToolUseBlockSchema,
+      anthropicMcpToolResultBlockSchema,
+      anthropicServerToolResultBlockSchema,
     ])),
   ]),
 }).loose()

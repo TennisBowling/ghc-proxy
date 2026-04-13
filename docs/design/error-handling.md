@@ -30,8 +30,8 @@ Errors from GitHub Copilot's API are forwarded to the client with the upstream s
 
 ```typescript
 class HTTPError extends Error {
-  status: number        // HTTP status code
-  body: HTTPErrorBody   // Structured error payload
+  status: number // HTTP status code
+  body: HTTPErrorBody // Structured error payload
 }
 ```
 
@@ -96,9 +96,9 @@ class TranslationContext {
 
 ```typescript
 interface TranslationIssue {
-  kind: string                         // e.g., 'unsupported_stop_sequences'
+  kind: string // e.g., 'unsupported_stop_sequences'
   severity: 'info' | 'warning' | 'error'
-  message: string                      // Human-readable description
+  message: string // Human-readable description
 }
 ```
 
@@ -121,10 +121,10 @@ Elysia-native error class with `status` property and `toResponse()`. Elysia auto
 
 ```typescript
 class HTTPError extends Error {
-  status: number       // HTTP status code
-  body: HTTPErrorBody  // Structured { error: { message, type, param?, code? } }
+  status: number // HTTP status code
+  body: HTTPErrorBody // Structured { error: { message, type, param?, code? } }
 
-  toResponse(): Response  // Returns Response.json(body, { status })
+  toResponse(): Response // Returns Response.json(body, { status })
 }
 ```
 
@@ -134,8 +134,8 @@ Thrown when a translation issue is fatal:
 
 ```typescript
 class TranslationFailure extends Error {
-  status: 400 | 502   // HTTP status code
-  kind: string         // Issue kind (e.g., 'unsupported_stop_sequences')
+  status: 400 | 502 // HTTP status code
+  kind: string // Issue kind (e.g., 'unsupported_stop_sequences')
 }
 ```
 
