@@ -1,9 +1,15 @@
 import type {
   AnthropicAssistantContentBlock,
   AnthropicAssistantMessage,
+  AnthropicDocumentBlock,
   AnthropicImageBlock,
+  AnthropicMcpToolResultBlock,
+  AnthropicMcpToolUseBlock,
   AnthropicMessage,
   AnthropicMessagesPayload,
+  AnthropicRedactedThinkingBlock,
+  AnthropicServerToolResultBlock,
+  AnthropicServerToolUseBlock,
   AnthropicTextBlock,
   AnthropicThinkingBlock,
   AnthropicTool,
@@ -113,9 +119,15 @@ function translateUserMessage(
   const pendingContent: Array<ResponseInputContent> = []
 
   for (const block of message.content) {
-    if (block.type === 'tool_result') {
+    if (block.type === 'tool_result' || block.type === 'mcp_tool_result') {
       flushPendingContent(pendingContent, items, { role: 'user' })
       items.push(createFunctionCallOutput(block))
+      continue
+    }
+
+    if (isServerToolResultBlock(block)) {
+      flushPendingContent(pendingContent, items, { role: 'user' })
+      items.push(createServerFunctionCallOutput(block))
       continue
     }
 
@@ -144,9 +156,27 @@ function translateAssistantMessage(
   const pendingContent: Array<ResponseInputContent> = []
 
   for (const block of message.content) {
-    if (block.type === 'tool_use') {
+    if (block.type === 'tool_use' || block.type === 'server_tool_use' || block.type === 'mcp_tool_use') {
       flushPendingContent(pendingContent, items, { role: 'assistant', phase: assistantPhase })
       items.push(createFunctionToolCall(block))
+      continue
+    }
+
+    if (block.type === 'redacted_thinking') {
+      flushPendingContent(pendingContent, items, { role: 'assistant', phase: assistantPhase })
+      items.push(createRedactedReasoningContent(block))
+      continue
+    }
+
+    if (block.type === 'mcp_tool_result') {
+      flushPendingContent(pendingContent, items, { role: 'assistant', phase: assistantPhase })
+      items.push(createFunctionCallOutput(block))
+      continue
+    }
+
+    if (isServerToolResultBlock(block)) {
+      flushPendingContent(pendingContent, items, { role: 'assistant', phase: assistantPhase })
+      items.push(createServerFunctionCallOutput(block))
       continue
     }
 
@@ -186,6 +216,8 @@ function translateUserContentBlock(
       return createTextContent(block.text)
     case 'image':
       return createImageContent(block)
+    case 'document':
+      return createDocumentContent(block)
     default:
       return undefined
   }
@@ -243,7 +275,7 @@ function resolveAssistantPhase(
   for (const block of content) {
     if (block.type === 'text')
       hasText = true
-    else if (block.type === 'tool_use')
+    else if (block.type === 'tool_use' || block.type === 'server_tool_use' || block.type === 'mcp_tool_use')
       hasToolUse = true
     if (hasText && hasToolUse)
       break
@@ -271,6 +303,40 @@ function createImageContent(block: AnthropicImageBlock): ResponseInputImage {
   }
 }
 
+function createDocumentContent(block: AnthropicDocumentBlock): ResponseInputContent {
+  const source = block.source
+  if (source.type === 'file' && typeof source.file_id === 'string') {
+    return {
+      type: 'input_file',
+      file_id: source.file_id,
+    }
+  }
+
+  if (source.type === 'url' && typeof source.url === 'string') {
+    return {
+      type: 'input_file',
+      file_url: source.url,
+    }
+  }
+
+  if (
+    source.type === 'base64'
+    && typeof source.media_type === 'string'
+    && typeof source.data === 'string'
+  ) {
+    return {
+      type: 'input_file',
+      file_data: `data:${source.media_type};base64,${source.data}`,
+    }
+  }
+
+  if (source.type === 'text' && typeof source.data === 'string') {
+    return createTextContent(source.data)
+  }
+
+  return createTextContent('[document attachment omitted]')
+}
+
 function createReasoningContent(
   block: AnthropicThinkingBlock,
 ): ResponseInputReasoning {
@@ -281,6 +347,16 @@ function createReasoningContent(
     type: 'reasoning',
     summary: thinking ? [{ type: 'summary_text', text: thinking }] : [],
     encrypted_content: encryptedContent,
+  }
+}
+
+function createRedactedReasoningContent(
+  block: AnthropicRedactedThinkingBlock,
+): ResponseInputReasoning {
+  return {
+    type: 'reasoning',
+    summary: [],
+    encrypted_content: block.data,
   }
 }
 
@@ -299,7 +375,7 @@ function createCompactionContent(
 }
 
 function createFunctionToolCall(
-  block: AnthropicToolUseBlock,
+  block: AnthropicToolUseBlock | AnthropicServerToolUseBlock | AnthropicMcpToolUseBlock,
 ): ResponseFunctionToolCallItem {
   return {
     type: 'function_call',
@@ -311,7 +387,7 @@ function createFunctionToolCall(
 }
 
 function createFunctionCallOutput(
-  block: AnthropicToolResultBlock,
+  block: AnthropicToolResultBlock | AnthropicMcpToolResultBlock,
 ): ResponseFunctionCallOutputItem {
   return {
     type: 'function_call_output',
@@ -319,6 +395,29 @@ function createFunctionCallOutput(
     output: convertToolResultContent(block.content),
     status: block.is_error ? 'incomplete' : 'completed',
   }
+}
+
+function createServerFunctionCallOutput(
+  block: AnthropicServerToolResultBlock,
+): ResponseFunctionCallOutputItem {
+  return {
+    type: 'function_call_output',
+    call_id: block.tool_use_id,
+    output: typeof block.content === 'string' ? block.content : (JSON.stringify(block.content) ?? ''),
+    status: block.is_error ? 'incomplete' : 'completed',
+  }
+}
+
+function isServerToolResultBlock(
+  block: AnthropicUserContentBlock | AnthropicAssistantContentBlock,
+): block is AnthropicServerToolResultBlock {
+  return block.type === 'server_tool_result'
+    || block.type === 'web_search_tool_result'
+    || block.type === 'web_fetch_tool_result'
+    || block.type === 'code_execution_tool_result'
+    || block.type === 'bash_code_execution_tool_result'
+    || block.type === 'text_editor_code_execution_tool_result'
+    || block.type === 'tool_search_tool_result'
 }
 
 function translateSystemPrompt(

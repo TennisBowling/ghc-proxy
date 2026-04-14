@@ -327,7 +327,8 @@ async function obtainEncryptedContent(
     })
 
     if (httpStatus < 200 || httpStatus >= 300) {
-      if (!jsonMode) process.stdout.write(` failed (${httpStatus})\n`)
+      if (!jsonMode)
+        process.stdout.write(` failed (${httpStatus})\n`)
       return {}
     }
 
@@ -340,15 +341,18 @@ async function obtainEncryptedContent(
     const id = reasoningItem?.id
 
     if (typeof ec === 'string' && typeof id === 'string') {
-      if (!jsonMode) process.stdout.write(` ok (${ec.length} chars)\n`)
+      if (!jsonMode)
+        process.stdout.write(` ok (${ec.length} chars)\n`)
       return { encryptedContent: ec, reasoningItemId: id }
     }
 
-    if (!jsonMode) process.stdout.write(' no encrypted_content in response\n')
+    if (!jsonMode)
+      process.stdout.write(' no encrypted_content in response\n')
     return {}
   }
   catch (err) {
-    if (!jsonMode) process.stdout.write(` error: ${err}\n`)
+    if (!jsonMode)
+      process.stdout.write(` error: ${err}\n`)
     return {}
   }
 }
@@ -413,10 +417,14 @@ async function main() {
       results.push(result)
 
       if (!jsonMode) {
-        const icon = result.status === 'pass' ? '✅'
-          : result.status === 'expected_reject' ? '✅'
-            : result.status === 'unexpected_reject' ? '❌'
-              : result.status === 'unexpected_pass' ? '⚠️'
+        const icon = result.status === 'pass'
+          ? '✅'
+          : result.status === 'expected_reject'
+            ? '✅'
+            : result.status === 'unexpected_reject'
+              ? '❌'
+              : result.status === 'unexpected_pass'
+                ? '⚠️'
                 : '💥'
         process.stdout.write(`${icon} ${result.status} (${httpStatus}) ${result.note}\n`)
       }

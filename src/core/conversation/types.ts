@@ -24,6 +24,11 @@ export interface ConversationThinkingBlock {
   signature?: string
 }
 
+export interface ConversationRedactedThinkingBlock {
+  kind: 'redacted_thinking'
+  data: string
+}
+
 export interface ConversationToolUseBlock {
   kind: 'tool_use'
   id: string
@@ -43,6 +48,7 @@ export type ConversationBlock
   = | ConversationTextBlock
     | ConversationImageBlock
     | ConversationThinkingBlock
+    | ConversationRedactedThinkingBlock
     | ConversationToolUseBlock
     | ConversationToolResultBlock
 

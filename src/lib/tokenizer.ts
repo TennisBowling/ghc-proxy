@@ -371,13 +371,31 @@ function estimateContentBlockChars(
       case 'thinking':
         chars += block.thinking.length
         break
+      case 'redacted_thinking':
+        chars += block.data.length
+        break
       case 'tool_use':
+      case 'server_tool_use':
+      case 'mcp_tool_use':
         chars += JSON.stringify(block.input).length
         break
       case 'tool_result':
+      case 'mcp_tool_result':
         chars += typeof block.content === 'string'
           ? block.content.length
           : JSON.stringify(block.content ?? '').length
+        break
+      case 'server_tool_result':
+      case 'web_search_tool_result':
+      case 'web_fetch_tool_result':
+      case 'code_execution_tool_result':
+      case 'bash_code_execution_tool_result':
+      case 'text_editor_code_execution_tool_result':
+      case 'tool_search_tool_result':
+        chars += JSON.stringify(block.content ?? '').length
+        break
+      case 'document':
+        chars += JSON.stringify(block).length
         break
       case 'image':
         // Base64 images are large but already counted in context;

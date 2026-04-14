@@ -49,6 +49,11 @@ export interface AnthropicImageBlock {
   }
 }
 
+export interface AnthropicDocumentBlock {
+  type: 'document'
+  source: Record<string, unknown>
+}
+
 export interface AnthropicToolResultBlock {
   type: 'tool_result'
   tool_use_id: string
@@ -63,10 +68,53 @@ export interface AnthropicToolUseBlock {
   input: Record<string, unknown>
 }
 
+export interface AnthropicServerToolUseBlock {
+  type: 'server_tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+export interface AnthropicMcpToolUseBlock {
+  type: 'mcp_tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+  server_name: string
+}
+
 export interface AnthropicThinkingBlock {
   type: 'thinking'
   thinking: string
   signature?: string
+}
+
+export interface AnthropicRedactedThinkingBlock {
+  type: 'redacted_thinking'
+  data: string
+}
+
+export type AnthropicServerToolResultType
+  = | 'server_tool_result'
+    | 'web_search_tool_result'
+    | 'web_fetch_tool_result'
+    | 'code_execution_tool_result'
+    | 'bash_code_execution_tool_result'
+    | 'text_editor_code_execution_tool_result'
+    | 'tool_search_tool_result'
+
+export interface AnthropicServerToolResultBlock {
+  type: AnthropicServerToolResultType
+  tool_use_id: string
+  content: unknown
+  is_error?: boolean
+}
+
+export interface AnthropicMcpToolResultBlock {
+  type: 'mcp_tool_result'
+  tool_use_id: string
+  content: string | Array<AnthropicToolResultContentBlock>
+  is_error?: boolean
 }
 
 export type AnthropicToolResultContentBlock
@@ -77,11 +125,19 @@ export type AnthropicUserContentBlock
   = | AnthropicTextBlock
     | AnthropicImageBlock
     | AnthropicToolResultBlock
+    | AnthropicDocumentBlock
+    | AnthropicServerToolResultBlock
+    | AnthropicMcpToolResultBlock
 
 export type AnthropicAssistantContentBlock
   = | AnthropicTextBlock
     | AnthropicToolUseBlock
+    | AnthropicServerToolUseBlock
+    | AnthropicMcpToolUseBlock
     | AnthropicThinkingBlock
+    | AnthropicRedactedThinkingBlock
+    | AnthropicServerToolResultBlock
+    | AnthropicMcpToolResultBlock
 
 export interface AnthropicUserMessage {
   role: 'user'

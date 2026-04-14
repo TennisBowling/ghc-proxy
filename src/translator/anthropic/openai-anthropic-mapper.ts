@@ -18,6 +18,11 @@ function mapBlocks(
           thinking: block.thinking,
           signature: block.signature,
         }
+      case 'redacted_thinking':
+        return {
+          type: 'redacted_thinking',
+          data: block.data,
+        }
       case 'tool_use':
         return {
           type: 'tool_use',

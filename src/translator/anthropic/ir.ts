@@ -26,6 +26,11 @@ export interface NormalizedThinkingBlock {
   signature?: string
 }
 
+export interface NormalizedRedactedThinkingBlock {
+  kind: 'redacted_thinking'
+  data: string
+}
+
 export interface NormalizedToolUseBlock {
   kind: 'tool_use'
   id: string
@@ -44,6 +49,7 @@ export type NormalizedBlock
   = | NormalizedTextBlock
     | NormalizedImageBlock
     | NormalizedThinkingBlock
+    | NormalizedRedactedThinkingBlock
     | NormalizedToolUseBlock
     | NormalizedToolResultBlock
 

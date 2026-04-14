@@ -1,7 +1,7 @@
 import { Elysia } from 'elysia'
 
 import { setRequestModelMapping } from '~/lib/request-logger'
-import { disableIdleTimeout, hasStreamingFlag, hasStreamingResponsesQuery } from '~/lib/request-timeout'
+import { disableIdleTimeout, hasStreamingResponsesQuery } from '~/lib/request-timeout'
 import { sseAdapter } from '~/lib/sse-adapter'
 import { requestGuardPlugin } from '~/routes/middleware/request-guard'
 
@@ -17,9 +17,7 @@ export function createResponsesRoutes() {
   return new Elysia()
     .use(requestGuardPlugin)
     .post('/responses', async function* ({ body, request, server }) {
-      if (hasStreamingFlag(body)) {
-        disableIdleTimeout(server, request)
-      }
+      disableIdleTimeout(server, request)
 
       const { result, modelMapping } = await handleResponsesCore({
         body,
@@ -33,7 +31,8 @@ export function createResponsesRoutes() {
       }
       yield* sseAdapter(result.generator)
     }, { guarded: true })
-    .post('/responses/input_tokens', async ({ body, request }) => {
+    .post('/responses/input_tokens', async ({ body, request, server }) => {
+      disableIdleTimeout(server, request)
       return handleCreateResponseInputTokensCore({
         body,
         headers: request.headers,

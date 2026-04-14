@@ -8,9 +8,13 @@ import type {
 
 import type {
   AnthropicCountTokensPayload,
+  AnthropicDocumentBlock,
+  AnthropicMcpToolResultBlock,
   AnthropicMessage,
   AnthropicMessagesPayload,
+  AnthropicServerToolResultBlock,
   AnthropicToolResultBlock,
+  AnthropicToolResultContentBlock,
 } from './types'
 
 import { assertNever } from '~/lib/assert-never'
@@ -46,11 +50,17 @@ function normalizeSystemBlocks(
 function normalizeToolResultContent(
   block: AnthropicToolResultBlock,
 ): Array<NormalizedTextBlock | NormalizedImageBlock> {
-  if (typeof block.content === 'string') {
-    return [textBlock(block.content)]
+  return normalizeToolResultContentValue(block.content)
+}
+
+function normalizeToolResultContentValue(
+  content: string | Array<AnthropicToolResultContentBlock>,
+): Array<NormalizedTextBlock | NormalizedImageBlock> {
+  if (typeof content === 'string') {
+    return [textBlock(content)]
   }
 
-  return block.content.map((contentBlock) => {
+  return content.map((contentBlock) => {
     switch (contentBlock.type) {
       case 'text':
         return textBlock(contentBlock.text)
@@ -60,6 +70,25 @@ function normalizeToolResultContent(
         return assertNever(contentBlock)
     }
   })
+}
+
+function normalizeMcpToolResultContent(
+  block: AnthropicMcpToolResultBlock,
+): Array<NormalizedTextBlock | NormalizedImageBlock> {
+  return normalizeToolResultContentValue(block.content)
+}
+
+function normalizeServerToolResultContent(
+  block: AnthropicServerToolResultBlock,
+): Array<NormalizedTextBlock> {
+  return [textBlock(typeof block.content === 'string' ? block.content : (JSON.stringify(block.content) ?? ''))]
+}
+
+function describeDocumentBlock(block: AnthropicDocumentBlock): string {
+  const sourceType = typeof block.source.type === 'string'
+    ? block.source.type
+    : 'unknown'
+  return `[document attachment omitted: ${sourceType}]`
 }
 
 function normalizeMessage(message: AnthropicMessage): NormalizedTurn {
@@ -82,7 +111,14 @@ function normalizeMessage(message: AnthropicMessage): NormalizedTurn {
           thinking: block.thinking,
           signature: block.signature,
         }
+      case 'redacted_thinking':
+        return {
+          kind: 'redacted_thinking',
+          data: block.data,
+        }
       case 'tool_use':
+      case 'server_tool_use':
+      case 'mcp_tool_use':
         return {
           kind: 'tool_use',
           id: block.id,
@@ -96,6 +132,28 @@ function normalizeMessage(message: AnthropicMessage): NormalizedTurn {
           content: normalizeToolResultContent(block),
           isError: block.is_error,
         }
+      case 'mcp_tool_result':
+        return {
+          kind: 'tool_result',
+          toolUseId: block.tool_use_id,
+          content: normalizeMcpToolResultContent(block),
+          isError: block.is_error,
+        }
+      case 'server_tool_result':
+      case 'web_search_tool_result':
+      case 'web_fetch_tool_result':
+      case 'code_execution_tool_result':
+      case 'bash_code_execution_tool_result':
+      case 'text_editor_code_execution_tool_result':
+      case 'tool_search_tool_result':
+        return {
+          kind: 'tool_result',
+          toolUseId: block.tool_use_id,
+          content: normalizeServerToolResultContent(block),
+          isError: block.is_error,
+        }
+      case 'document':
+        return textBlock(describeDocumentBlock(block))
       default:
         return assertNever(block)
     }

@@ -104,6 +104,7 @@ function mapUserTurn(
         messages.push(mapToolResultBlock(block, context))
         break
       case 'thinking':
+      case 'redacted_thinking':
       case 'tool_use':
         context.record(
           {
@@ -139,6 +140,7 @@ function mapAssistantTurn(
         textBlocks.push(block)
         break
       case 'thinking':
+      case 'redacted_thinking':
         context.record({
           kind: 'lossy_thinking_omitted_from_prompt',
           severity: 'warning',

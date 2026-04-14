@@ -236,6 +236,44 @@ describe('Anthropic payload validation', () => {
       }),
     ).toThrow('Invalid request payload')
   })
+
+  test('accepts extended assistant content blocks', () => {
+    const payload = parseAnthropicMessagesPayload({
+      model: 'claude-sonnet-4.6',
+      max_tokens: 100,
+      messages: [{
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'hmm', signature: 'sig_1' },
+          { type: 'redacted_thinking', data: 'encrypted' },
+          { type: 'server_tool_use', id: 'srvtu_1', name: 'web_search', input: { query: 'cats' } },
+          { type: 'mcp_tool_use', id: 'mcptoolu_1', name: 'echo', server_name: 'example-mcp', input: { text: 'hi' } },
+          { type: 'web_search_tool_result', tool_use_id: 'srvtu_1', content: [{ type: 'web_search_result', title: 'Cats', url: 'https://example.com' }] },
+          { type: 'mcp_tool_result', tool_use_id: 'mcptoolu_1', content: [{ type: 'text', text: 'hi' }] },
+          { type: 'text', text: 'done' },
+        ],
+      }],
+    })
+
+    expect(payload.messages).toHaveLength(1)
+  })
+
+  test('accepts document and provider tool result blocks in user messages', () => {
+    const payload = parseAnthropicMessagesPayload({
+      model: 'claude-sonnet-4.6',
+      max_tokens: 100,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'file', file_id: 'file_123' } },
+          { type: 'server_tool_result', tool_use_id: 'srvtu_1', content: 'result' },
+          { type: 'mcp_tool_result', tool_use_id: 'mcptoolu_1', content: 'mcp result', is_error: false },
+        ],
+      }],
+    })
+
+    expect(payload.messages).toHaveLength(1)
+  })
 })
 
 describe('Responses payload validation', () => {

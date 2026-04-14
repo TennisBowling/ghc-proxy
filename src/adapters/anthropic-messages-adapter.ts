@@ -57,6 +57,11 @@ export function toConversationBlock(block: NormalizedBlock): ConversationBlock {
         text: block.thinking,
         signature: block.signature,
       }
+    case 'redacted_thinking':
+      return {
+        kind: 'redacted_thinking',
+        data: block.data,
+      }
     case 'tool_use':
       return {
         kind: 'tool_use',
@@ -132,6 +137,12 @@ export function recordAnthropicRequestIssues(
 
     for (const block of turn.blocks) {
       if (block.kind === 'thinking') {
+        sawThinking = true
+        if (sawToolUse) {
+          sawTextOrThinkingAfterTool = true
+        }
+      }
+      else if (block.kind === 'redacted_thinking') {
         sawThinking = true
         if (sawToolUse) {
           sawTextOrThinkingAfterTool = true
