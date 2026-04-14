@@ -1,20 +1,24 @@
 # deps
 node_modules/
 
-# local env
-*.local
-
-# aider
-.aider*
-
-# eslint cache
+# build & cache
+dist/
 .eslintcache
 
-# build output
-dist/
-
-# sisyphus
-.sisyphus/
+# local config
+*.local
 /.claude/settings.local.json
 /plans
+
+# tools
+.aider*
 .alma-snapshots
+.sisyphus/
+
+# os — windows
+Thumbs.db
+Desktop.ini
+nul
+
+# os — macos
+.DS_Store
