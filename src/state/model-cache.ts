@@ -1,0 +1,74 @@
+import type { Model, ModelsResponse } from '~/types'
+
+export const RESPONSES_ENDPOINT = '/responses'
+export const MESSAGES_ENDPOINT = '/v1/messages'
+
+/**
+ * Models whose upstream `/v1/messages` endpoint rejects the `output_config`
+ * field with "Extra inputs are not permitted".
+ *
+ * Verified via `scripts/probe-all-models-output-config.ts` (2026-03-14).
+ * When new models appear, re-run the probe and update this list.
+ */
+const MODELS_REJECTING_OUTPUT_CONFIG = new Set([
+  'claude-sonnet-4',
+  'claude-sonnet-4.5',
+  'claude-haiku-4.5',
+])
+
+export class ModelCache {
+  private models?: ModelsResponse
+  private vsCodeVersion?: string
+
+  cacheModels(models: ModelsResponse): void {
+    this.models = models
+  }
+
+  getModels(): ModelsResponse | undefined {
+    return this.models
+  }
+
+  setVSCodeVersion(version: string): void {
+    this.vsCodeVersion = version
+  }
+
+  getVSCodeVersion(): string | undefined {
+    return this.vsCodeVersion
+  }
+
+  findById(modelId: string): Model | undefined {
+    return this.models?.data.find(model => model.id === modelId)
+  }
+
+  getModelIds(): Array<string> {
+    return this.models?.data.map(model => model.id) ?? []
+  }
+
+  supportsEndpoint(model: Model | undefined, endpoint: string): boolean {
+    return model?.supported_endpoints?.includes(endpoint) ?? false
+  }
+
+  supportsToolCalls(model: Model | undefined): boolean {
+    return model?.capabilities.supports.tool_calls ?? false
+  }
+
+  supportsAdaptiveThinking(model: Model | undefined): boolean {
+    return model?.capabilities.supports.adaptive_thinking ?? false
+  }
+
+  supportsVision(model: Model | undefined): boolean {
+    return model?.capabilities.supports.vision ?? false
+  }
+
+  supportsOutputConfig(model: Model | undefined): boolean {
+    if (!model)
+      return true
+    return !MODELS_REJECTING_OUTPUT_CONFIG.has(model.id)
+  }
+
+  getVisionLimits(model: Model | undefined): Model['capabilities']['limits']['vision'] | undefined {
+    return model?.capabilities.limits.vision
+  }
+}
+
+export const modelCache = new ModelCache()
