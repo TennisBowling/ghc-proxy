@@ -8,11 +8,10 @@ import type { AnthropicMessagesPayload } from '~/translator'
 import type { Model } from '~/types'
 import consola from 'consola'
 import { CopilotTransport } from '~/adapters'
-import { fromTranslationFailure } from '~/lib/error'
+import { withTranslationErrors } from '~/deliver/error'
 import { runStrategy } from '~/lib/execution-strategy'
 import { appendModelStep } from '~/lib/request-logger'
 import { configStore, MESSAGES_ENDPOINT, modelCache, RESPONSES_ENDPOINT } from '~/state'
-import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 import { translateAnthropicToResponsesPayload } from '~/translator/responses/anthropic-to-responses'
 import { SignatureCodec } from '~/translator/responses/signature-codec'
 
@@ -208,18 +207,11 @@ const responsesApiEntry: StrategyEntry = {
   name: 'responses-api',
   canHandle: model => modelCache.supportsEndpoint(model, RESPONSES_ENDPOINT),
   async execute(ctx) {
-    let responsesPayload
-    try {
-      responsesPayload = translateAnthropicToResponsesPayload(ctx.anthropicPayload, {
+    const responsesPayload = withTranslationErrors(() =>
+      translateAnthropicToResponsesPayload(ctx.anthropicPayload, {
         reasoningEffortResolver: model => configStore.getReasoningEffort(model),
-      })
-    }
-    catch (error) {
-      if (error instanceof TranslationFailure) {
-        throw fromTranslationFailure(error)
-      }
-      throw error
-    }
+      }),
+    )
 
     applyContextManagement(
       responsesPayload,
@@ -248,18 +240,11 @@ const chatCompletionsEntry: StrategyEntry = {
   canHandle: () => true,
   async execute(ctx) {
     const adapter = createAnthropicAdapter()
-    let plan
-    try {
-      plan = adapter.toCapiPlan(ctx.anthropicPayload, {
+    const plan = withTranslationErrors(() =>
+      adapter.toCapiPlan(ctx.anthropicPayload, {
         requestContext: ctx.requestContext,
-      })
-    }
-    catch (error) {
-      if (error instanceof TranslationFailure) {
-        throw fromTranslationFailure(error)
-      }
-      throw error
-    }
+      }),
+    )
 
     const modelMapping = appendModelStep(ctx.modelMapping, 'MODEL_RESOLVE', plan.resolvedModel)
 
