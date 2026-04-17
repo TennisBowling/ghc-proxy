@@ -23,14 +23,121 @@ export function createObjectSchemaDefinitionSchema(message: string) {
 
 // ── Generic Parse Helper ──
 
+interface ValidationIssueDetail {
+  path: Array<PropertyKey>
+  message: string
+  code?: string
+  expected?: unknown
+}
+
+interface ZodIssueLike {
+  path?: Array<PropertyKey>
+  message?: string
+  code?: string
+  expected?: unknown
+  errors?: unknown
+}
+
+const MAX_VALIDATION_DETAILS = 200
+
+function isIssueArray(value: unknown): value is Array<ZodIssueLike> {
+  return Array.isArray(value)
+    && value.every(item => typeof item === 'object' && item !== null)
+}
+
+function isNestedUnionErrors(value: unknown): value is Array<Array<ZodIssueLike>> {
+  return Array.isArray(value) && value.every(isIssueArray)
+}
+
+function joinPath(prefix: Array<PropertyKey>, path: Array<PropertyKey> | undefined): Array<PropertyKey> {
+  return [...prefix, ...(path ?? [])]
+}
+
+function flattenIssue(
+  issue: ZodIssueLike,
+  pathPrefix: Array<PropertyKey> = [],
+): Array<ValidationIssueDetail> {
+  const path = joinPath(pathPrefix, issue.path)
+
+  if (issue.code === 'invalid_union' && isNestedUnionErrors(issue.errors)) {
+    const nested = issue.errors.flatMap(errors =>
+      errors.flatMap(error => flattenIssue(error, path)),
+    )
+    if (nested.length > 0) {
+      return nested
+    }
+  }
+
+  return [{
+    path,
+    message: issue.message ?? 'Invalid input',
+    ...(issue.code ? { code: issue.code } : {}),
+    ...(issue.expected !== undefined ? { expected: issue.expected } : {}),
+  }]
+}
+
+function formatValidationIssues(issues: Array<z.core.$ZodIssue>): Array<ValidationIssueDetail> {
+  const seen = new Set<string>()
+  const details: Array<ValidationIssueDetail> = []
+
+  for (const issue of issues) {
+    for (const detail of flattenIssue(issue as ZodIssueLike)) {
+      const key = JSON.stringify([detail.path, detail.message, detail.code, detail.expected])
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      details.push(detail)
+      if (details.length >= MAX_VALIDATION_DETAILS) {
+        details.push({
+          path: [],
+          message: `Validation issue details truncated at ${MAX_VALIDATION_DETAILS} entries.`,
+          code: 'too_many_issues',
+        })
+        return details
+      }
+    }
+  }
+
+  return details
+}
+
+function formatIssuePath(path: Array<PropertyKey>): string {
+  if (path.length === 0) {
+    return '(root)'
+  }
+
+  return path.map((part, index) => {
+    if (typeof part === 'number') {
+      return `[${part}]`
+    }
+
+    const value = String(part)
+    return index === 0 ? value : `.${value}`
+  }).join('')
+}
+
+function formatValidationIssuesForLog(
+  details: Array<ValidationIssueDetail>,
+): Array<Omit<ValidationIssueDetail, 'path'> & { path: string }> {
+  return details.map(detail => ({
+    ...detail,
+    path: formatIssuePath(detail.path),
+  }))
+}
+
 function throwInvalidPayload(context: string, issues: Array<z.core.$ZodIssue>): never {
-  consola.warn('Invalid request payload', { context, issues })
+  const details = formatValidationIssues(issues)
+  consola.warn('Invalid request payload', {
+    context,
+    issues: formatValidationIssuesForLog(details),
+  })
   throw new HTTPError(400, {
     error: {
       message: 'Invalid request payload',
       type: 'invalid_request_error',
       param: context,
-      details: issues.map(i => ({ path: i.path, message: i.message })),
+      details,
     },
   })
 }

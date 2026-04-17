@@ -340,6 +340,8 @@ When the Copilot token response includes `endpoints.api`, `ghc-proxy` now prefer
 
 Incoming requests hit an [Elysia](https://elysiajs.com/) server. `chat/completions` requests are validated, normalized into the shared planning pipeline, and then forwarded to Copilot. `responses` requests use a native Responses path with explicit compatibility policies. `messages` requests are routed per-model and can use native Anthropic passthrough, the Responses translation path, or the existing chat-completions fallback. The translator tracks exact vs lossy vs unsupported behavior explicitly; see the [Messages Routing and Translation Guide](./docs/messages-routing-and-translation.md) and the [Anthropic Translation Matrix](./docs/anthropic-translation-matrix.md) for the current support surface.
 
+For Anthropic `search_result` blocks, current live probes show Copilot native `/v1/messages` accepts top-level search results and pure search-result tool outputs, but rejects top-level `citations` and mixed text/search-result tool output arrays. The native path sanitizes those known rejection cases, while translated paths flatten search results to text.
+
 ### Request Routing
 
 `ghc-proxy` does not force every request through one protocol. The current routing rules are:

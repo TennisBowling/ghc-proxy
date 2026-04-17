@@ -27,6 +27,15 @@ const anthropicImageBlockSchema = z.object({
   }).loose(),
 }).loose()
 
+const anthropicSearchResultBlockSchema = z.object({
+  type: z.literal('search_result'),
+  source: z.string().min(1),
+  title: z.string().min(1),
+  content: z.array(anthropicTextBlockSchema).min(1),
+  citations: z.unknown().optional(),
+  cache_control: z.unknown().optional(),
+}).loose()
+
 const anthropicThinkingBlockSchema = z.object({
   type: z.literal('thinking'),
   thinking: z.string(),
@@ -63,6 +72,7 @@ const anthropicMcpToolUseBlockSchema = z.object({
 const anthropicToolResultContentBlockSchema = z.union([
   anthropicTextBlockSchema,
   anthropicImageBlockSchema,
+  anthropicSearchResultBlockSchema,
 ])
 
 const anthropicToolResultBlockSchema = z.object({
@@ -112,6 +122,7 @@ const anthropicUserMessageSchema = z.object({
     z.array(z.union([
       anthropicTextBlockSchema,
       anthropicImageBlockSchema,
+      anthropicSearchResultBlockSchema,
       anthropicToolResultBlockSchema,
       anthropicMcpToolResultBlockSchema,
       anthropicServerToolResultBlockSchema,

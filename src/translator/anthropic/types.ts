@@ -54,6 +54,15 @@ export interface AnthropicDocumentBlock {
   source: Record<string, unknown>
 }
 
+export interface AnthropicSearchResultBlock {
+  type: 'search_result'
+  source: string
+  title: string
+  content: Array<AnthropicTextBlock>
+  citations?: unknown
+  cache_control?: unknown
+}
+
 export interface AnthropicToolResultBlock {
   type: 'tool_result'
   tool_use_id: string
@@ -120,10 +129,12 @@ export interface AnthropicMcpToolResultBlock {
 export type AnthropicToolResultContentBlock
   = | AnthropicTextBlock
     | AnthropicImageBlock
+    | AnthropicSearchResultBlock
 
 export type AnthropicUserContentBlock
   = | AnthropicTextBlock
     | AnthropicImageBlock
+    | AnthropicSearchResultBlock
     | AnthropicToolResultBlock
     | AnthropicDocumentBlock
     | AnthropicServerToolResultBlock

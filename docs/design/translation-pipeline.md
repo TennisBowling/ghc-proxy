@@ -83,6 +83,7 @@ interface NormalizedTurn {
 - Splits multi-block assistant turns preserving block order
 - Extracts thinking configuration
 - Preserves tool choice semantics
+- Converts Anthropic `search_result` blocks to text when the request must go through a translated path; the formatted text keeps title, source, and result content, but citation metadata is not representable in Chat Completions.
 
 **OpenAI Normalizer** (`openai-normalizer.ts`):
 - Converts OpenAI choice + message into `NormalizedTurn`
@@ -174,7 +175,9 @@ Key mappings:
 | `system` text                      | `instructions`               |
 | User text message                  | `message { role: user, content: [input_text] }` |
 | User image                         | `message { content: [input_image] }` |
+| User `search_result`               | `message { content: [input_text] }` |
 | User `tool_result`                 | `function_call_output`       |
+| `tool_result` `search_result` content | `function_call_output` with text output |
 | Assistant text                     | `message { role: assistant, content: [output_text] }` |
 | Assistant `tool_use`               | `function_call`              |
 | Assistant reasoning (with signature) | `reasoning` (with encrypted_content + id) |

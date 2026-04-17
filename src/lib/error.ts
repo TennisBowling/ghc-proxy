@@ -6,7 +6,12 @@ export interface HTTPErrorBody {
     type: string
     param?: string
     code?: string
-    details?: Array<{ path: unknown, message: string }>
+    details?: Array<{
+      path: unknown
+      message: string
+      code?: string
+      expected?: unknown
+    }>
   }
 }
 

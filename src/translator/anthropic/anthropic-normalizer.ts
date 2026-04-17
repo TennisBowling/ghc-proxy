@@ -12,12 +12,14 @@ import type {
   AnthropicMcpToolResultBlock,
   AnthropicMessage,
   AnthropicMessagesPayload,
+  AnthropicSearchResultBlock,
   AnthropicServerToolResultBlock,
   AnthropicToolResultBlock,
   AnthropicToolResultContentBlock,
 } from './types'
 
 import { assertNever } from '~/lib/assert-never'
+import { formatSearchResultBlock } from '~/translator/anthropic/search-result'
 
 function textBlock(text: string): NormalizedTextBlock {
   return { kind: 'text', text }
@@ -66,6 +68,8 @@ function normalizeToolResultContentValue(
         return textBlock(contentBlock.text)
       case 'image':
         return imageBlock(contentBlock.source.media_type, contentBlock.source.data)
+      case 'search_result':
+        return textBlock(formatSearchResultBlock(contentBlock))
       default:
         return assertNever(contentBlock)
     }
@@ -91,6 +95,10 @@ function describeDocumentBlock(block: AnthropicDocumentBlock): string {
   return `[document attachment omitted: ${sourceType}]`
 }
 
+function normalizeSearchResultBlock(block: AnthropicSearchResultBlock): NormalizedTextBlock {
+  return textBlock(formatSearchResultBlock(block))
+}
+
 function normalizeMessage(message: AnthropicMessage): NormalizedTurn {
   if (typeof message.content === 'string') {
     return {
@@ -105,6 +113,8 @@ function normalizeMessage(message: AnthropicMessage): NormalizedTurn {
         return textBlock(block.text)
       case 'image':
         return imageBlock(block.source.media_type, block.source.data)
+      case 'search_result':
+        return normalizeSearchResultBlock(block)
       case 'thinking':
         return {
           kind: 'thinking',

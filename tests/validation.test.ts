@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { HTTPError } from '~/lib/error'
 import {
   parseAnthropicCountTokensPayload,
   parseAnthropicMessagesPayload,
@@ -286,6 +287,85 @@ describe('Anthropic payload validation', () => {
     })
 
     expect(payload.messages).toHaveLength(1)
+  })
+
+  test('accepts search_result blocks in user messages and tool results', () => {
+    const payload = parseAnthropicMessagesPayload({
+      model: 'claude-opus-4.6-1m',
+      max_tokens: 100,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'search_result',
+            source: 'https://example.com/a',
+            title: 'Example A',
+            content: [{ type: 'text', text: 'Alpha' }],
+          },
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_1',
+            content: [
+              { type: 'text', text: 'Preface' },
+              {
+                type: 'search_result',
+                source: 'https://example.com/b',
+                title: 'Example B',
+                content: [{ type: 'text', text: 'Bravo' }],
+              },
+            ],
+          },
+          {
+            type: 'mcp_tool_result',
+            tool_use_id: 'mcptoolu_1',
+            content: [
+              {
+                type: 'search_result',
+                source: 'https://example.com/c',
+                title: 'Example C',
+                content: [{ type: 'text', text: 'Charlie' }],
+              },
+            ],
+          },
+        ],
+      }],
+    })
+
+    expect(payload.messages).toHaveLength(1)
+  })
+
+  test('validation details expand nested union errors', () => {
+    try {
+      parseAnthropicMessagesPayload({
+        model: 'claude-opus-4.6-1m',
+        max_tokens: 100,
+        messages: [{
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'toolu_1',
+            content: [{
+              type: 'search_result',
+              source: 'https://example.com',
+              title: 'Broken',
+              content: [{ type: 'text' }],
+            }],
+          }],
+        }],
+      })
+    }
+    catch (error) {
+      expect(error).toBeInstanceOf(HTTPError)
+      const details = (error as HTTPError).body.error.details ?? []
+      expect(details.some(detail =>
+        Array.isArray(detail.path)
+        && detail.path.includes('content')
+        && detail.message.includes('expected string'),
+      )).toBe(true)
+      return
+    }
+
+    throw new Error('Expected validation to fail')
   })
 })
 

@@ -8,6 +8,7 @@ import type {
   AnthropicMessage,
   AnthropicMessagesPayload,
   AnthropicRedactedThinkingBlock,
+  AnthropicSearchResultBlock,
   AnthropicServerToolResultBlock,
   AnthropicServerToolUseBlock,
   AnthropicTextBlock,
@@ -34,6 +35,7 @@ import type {
   ToolChoiceOptions,
 } from '~/types'
 import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
+import { formatSearchResultBlock } from '~/translator/anthropic/search-result'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 
 import { SignatureCodec } from './signature-codec'
@@ -216,6 +218,8 @@ function translateUserContentBlock(
       return createTextContent(block.text)
     case 'image':
       return createImageContent(block)
+    case 'search_result':
+      return createTextContent(formatSearchResultBlock(block))
     case 'document':
       return createDocumentContent(block)
     default:
@@ -564,7 +568,7 @@ function parseUserId(
 }
 
 function convertToolResultContent(
-  content: string | Array<AnthropicTextBlock | AnthropicImageBlock>,
+  content: string | Array<AnthropicTextBlock | AnthropicImageBlock | AnthropicSearchResultBlock>,
 ): string | Array<ResponseInputContent> {
   if (typeof content === 'string') {
     return content
@@ -578,6 +582,9 @@ function convertToolResultContent(
         break
       case 'image':
         result.push(createImageContent(block))
+        break
+      case 'search_result':
+        result.push(createTextContent(formatSearchResultBlock(block)))
         break
       default:
         break
