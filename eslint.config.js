@@ -7,5 +7,6 @@ export default antfu({
     'dist/**',
     'node_modules/**',
     'plans/**',
+    'docs/superpowers/**',
   ],
 })
