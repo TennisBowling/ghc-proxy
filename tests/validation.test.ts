@@ -172,6 +172,19 @@ describe('Anthropic payload validation', () => {
     expect(payload.max_tokens).toBeUndefined()
   })
 
+  test('accepts output_config effort values', () => {
+    for (const effort of ['low', 'medium', 'high', 'max', 'xhigh'] as const) {
+      const payload = parseAnthropicMessagesPayload({
+        model: 'claude-haiku-4.5',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Hello!' }],
+        output_config: { effort },
+      })
+
+      expect(payload.output_config?.effort).toBe(effort)
+    }
+  })
+
   test('tool_choice.tool requires a declared tool name', () => {
     expect(() =>
       parseAnthropicMessagesPayload({

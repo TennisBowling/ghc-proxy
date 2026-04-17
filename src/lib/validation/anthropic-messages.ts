@@ -177,6 +177,10 @@ const anthropicThinkingSchema = z.union([
   }).loose(),
 ])
 
+const anthropicOutputConfigSchema = z.object({
+  effort: z.enum(['low', 'medium', 'high', 'max', 'xhigh']).optional(),
+}).loose()
+
 const anthropicMessagesBasePayloadSchema = z.object({
   model: z.string().min(1),
   messages: z.array(anthropicMessageSchema).min(1),
@@ -195,6 +199,7 @@ const anthropicMessagesBasePayloadSchema = z.object({
   tools: z.array(anthropicToolSchema).optional(),
   tool_choice: anthropicToolChoiceSchema.optional(),
   thinking: anthropicThinkingSchema.optional(),
+  output_config: anthropicOutputConfigSchema.optional(),
   service_tier: z.enum(['auto', 'standard_only']).optional(),
 }).loose().superRefine((payload, ctx) => {
   if (payload.tool_choice?.type === 'tool' && !payload.tools?.some(tool => tool.name === payload.tool_choice?.name)) {

@@ -87,15 +87,64 @@ function filterThinkingBlocksForNativeMessages(
 }
 
 /**
- * Strip `output_config` for models known to reject it.
+ * Strip `output_config` for models known to reject it, and clamp
+ * unsupported effort values to the highest effort the selected model
+ * advertises. Copilot rejects unknown effort values before generation.
  */
 function sanitizeOutputConfig(
   payload: AnthropicMessagesPayload,
   model: Model | undefined,
 ): void {
-  if (payload.output_config && !modelSupportsOutputConfig(model)) {
-    delete payload.output_config
+  if (!payload.output_config) {
+    return
   }
+
+  if (!modelSupportsOutputConfig(model)) {
+    delete payload.output_config
+    return
+  }
+
+  const effort = payload.output_config.effort
+  if (!effort) {
+    return
+  }
+
+  const normalizedEffort = normalizeOutputConfigEffort(effort, model)
+  if (normalizedEffort) {
+    payload.output_config.effort = normalizedEffort
+  }
+}
+
+const OUTPUT_CONFIG_EFFORTS = ['low', 'medium', 'high', 'max', 'xhigh'] as const
+type OutputConfigEffort = typeof OUTPUT_CONFIG_EFFORTS[number]
+
+const OUTPUT_CONFIG_EFFORT_RANK = new Map<OutputConfigEffort, number>(
+  OUTPUT_CONFIG_EFFORTS.map((effort, index) => [effort, index]),
+)
+
+function isOutputConfigEffort(value: string): value is OutputConfigEffort {
+  return OUTPUT_CONFIG_EFFORT_RANK.has(value as OutputConfigEffort)
+}
+
+function normalizeOutputConfigEffort(
+  effort: OutputConfigEffort,
+  model: Model | undefined,
+): OutputConfigEffort | undefined {
+  const supportedEfforts = model?.capabilities.supports.reasoning_effort
+    ?.filter(isOutputConfigEffort)
+  if (!supportedEfforts?.length) {
+    return undefined
+  }
+
+  if (supportedEfforts.includes(effort)) {
+    return effort
+  }
+
+  return supportedEfforts.reduce((highest, current) => {
+    const highestRank = OUTPUT_CONFIG_EFFORT_RANK.get(highest) ?? -1
+    const currentRank = OUTPUT_CONFIG_EFFORT_RANK.get(current) ?? -1
+    return currentRank > highestRank ? current : highest
+  })
 }
 
 function normalizeCacheControlBlock(obj: Record<string, unknown>) {
