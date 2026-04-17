@@ -124,6 +124,6 @@ describe('POST /v1/messages/count_tokens', () => {
     const json = (await response.json()) as {
       error: { message: string, type: string }
     }
-    expect(json.error.message).toContain('Model not found for token counting')
+    expect(json.error.message).toContain('The selected model could not be resolved')
   })
 })

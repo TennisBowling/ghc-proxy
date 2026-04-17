@@ -1,20 +1,12 @@
 import type {
   ResponseInputItemsListParams,
   ResponseRetrieveParams,
-  ResponsesInputTokensPayload,
 } from '~/types'
 
 import { normalizeResponsesRequestContext, readCapiRequestContext } from '~/core/capi/request-context'
+import { createResourceDispatcher } from '~/dispatch/resource-dispatcher'
 import { throwInvalidRequestError } from '~/lib/error'
-import { createCopilotClient } from '~/lib/state'
 import { parseResponsesInputTokensPayload } from '~/lib/validation'
-import { configStore, modelCache } from '~/state'
-import {
-  deleteStoredResponseOrThrow,
-  estimateEmulatorInputTokens,
-  getStoredResponseOrThrow,
-  listStoredInputItemsOrThrow,
-} from './emulator'
 
 // --- Core request parameter interfaces ---
 
@@ -37,79 +29,47 @@ export async function handleRetrieveResponseCore(
   { params, url, headers, signal }: ResourceHandlerParams,
 ): Promise<object> {
   const responseId = requireResponseId(params.responseId)
-  if (configStore.isEmulatorEnabled()) {
-    return getStoredResponseOrThrow(responseId)
-  }
-  const copilotClient = createCopilotClient()
-  return await copilotClient.getResponse(responseId, {
-    params: getRetrieveParamsFromUrl(url),
-    requestContext: readCapiRequestContext(headers),
-    signal,
-  })
+  const dispatcher = createResourceDispatcher()
+  return await dispatcher.retrieve(
+    responseId,
+    getRetrieveParamsFromUrl(url),
+    { requestContext: readCapiRequestContext(headers), signal },
+  ) as object
 }
 
 export async function handleListResponseInputItemsCore(
   { params, url, headers, signal }: ResourceHandlerParams,
 ): Promise<object> {
   const responseId = requireResponseId(params.responseId)
-  if (configStore.isEmulatorEnabled()) {
-    return listStoredInputItemsOrThrow(
-      responseId,
-      getInputItemsParamsFromUrl(url),
-    )
-  }
-  const copilotClient = createCopilotClient()
-  return await copilotClient.getResponseInputItems(
+  const dispatcher = createResourceDispatcher()
+  return await dispatcher.listInputItems(
     responseId,
     getInputItemsParamsFromUrl(url),
-    {
-      requestContext: readCapiRequestContext(headers),
-      signal,
-    },
-  )
+    { requestContext: readCapiRequestContext(headers), signal },
+  ) as object
 }
 
 export async function handleCreateResponseInputTokensCore(
   { body, headers, signal }: ResourceHandlerBodyParams,
 ): Promise<object> {
-  const payload = parseResponsesInputTokensPayload(body) as ResponsesInputTokensPayload
+  const payload = parseResponsesInputTokensPayload(body)
   const requestContext = normalizeResponsesRequestContext(payload, headers)
-  if (configStore.isEmulatorEnabled()) {
-    const model = payload.model
-    if (!model) {
-      throwInvalidRequestError(
-        'The selected model could not be resolved.',
-        'model',
-      )
-    }
-    const selectedModel = modelCache.findById(model)
-    if (!selectedModel) {
-      throwInvalidRequestError(
-        'The selected model could not be resolved.',
-        'model',
-      )
-    }
-    return await estimateEmulatorInputTokens(payload, selectedModel)
-  }
-  const copilotClient = createCopilotClient()
-  return await copilotClient.createResponseInputTokens(payload, {
-    requestContext,
-    signal,
-  })
+  const dispatcher = createResourceDispatcher()
+  return await dispatcher.createInputTokens(
+    payload,
+    { requestContext, signal },
+  ) as object
 }
 
 export async function handleDeleteResponseCore(
   { params, headers, signal }: Omit<ResourceHandlerParams, 'url'>,
 ): Promise<object> {
   const responseId = requireResponseId(params.responseId)
-  if (configStore.isEmulatorEnabled()) {
-    return deleteStoredResponseOrThrow(responseId)
-  }
-  const copilotClient = createCopilotClient()
-  return await copilotClient.deleteResponse(responseId, {
-    requestContext: readCapiRequestContext(headers),
-    signal,
-  })
+  const dispatcher = createResourceDispatcher()
+  return await dispatcher.delete(
+    responseId,
+    { requestContext: readCapiRequestContext(headers), signal },
+  ) as object
 }
 
 // --- Shared helpers ---

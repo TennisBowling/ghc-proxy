@@ -1,4 +1,5 @@
-import type { ResponseInputItemsListParams, ResponsesInputTokensPayload } from '~/types'
+import type { CapiRequestContext } from '~/core/capi/types'
+import type { ResponseInputItemsListParams, ResponseRetrieveParams, ResponsesInputTokensPayload } from '~/types'
 
 import { throwInvalidRequestError } from '~/lib/error'
 import { createCopilotClient } from '~/lib/state'
@@ -11,11 +12,16 @@ import {
 
 import { configStore, modelCache } from '~/state'
 
+export interface ResourceRequestOptions {
+  signal?: AbortSignal
+  requestContext?: Partial<CapiRequestContext>
+}
+
 export interface ResourceDispatcher {
-  retrieve: (responseId: string, params?: Record<string, unknown>) => Promise<unknown>
-  listInputItems: (responseId: string, params?: ResponseInputItemsListParams) => Promise<unknown>
-  createInputTokens: (payload: ResponsesInputTokensPayload) => Promise<unknown>
-  delete: (responseId: string) => Promise<unknown>
+  retrieve: (responseId: string, params?: ResponseRetrieveParams, options?: ResourceRequestOptions) => Promise<unknown>
+  listInputItems: (responseId: string, params?: ResponseInputItemsListParams, options?: ResourceRequestOptions) => Promise<unknown>
+  createInputTokens: (payload: ResponsesInputTokensPayload, options?: ResourceRequestOptions) => Promise<unknown>
+  delete: (responseId: string, options?: ResourceRequestOptions) => Promise<unknown>
 }
 
 class EmulatorResourceDispatcher implements ResourceDispatcher {
@@ -51,24 +57,24 @@ class EmulatorResourceDispatcher implements ResourceDispatcher {
 }
 
 class UpstreamResourceDispatcher implements ResourceDispatcher {
-  retrieve(responseId: string, params?: Record<string, unknown>): Promise<unknown> {
+  retrieve(responseId: string, params?: ResponseRetrieveParams, options?: ResourceRequestOptions): Promise<unknown> {
     const client = createCopilotClient()
-    return client.getResponse(responseId, params as Parameters<typeof client.getResponse>[1])
+    return client.getResponse(responseId, { params, ...options })
   }
 
-  listInputItems(responseId: string, params?: ResponseInputItemsListParams): Promise<unknown> {
+  listInputItems(responseId: string, params?: ResponseInputItemsListParams, options?: ResourceRequestOptions): Promise<unknown> {
     const client = createCopilotClient()
-    return client.getResponseInputItems(responseId, params)
+    return client.getResponseInputItems(responseId, params, options)
   }
 
-  createInputTokens(payload: ResponsesInputTokensPayload): Promise<unknown> {
+  createInputTokens(payload: ResponsesInputTokensPayload, options?: ResourceRequestOptions): Promise<unknown> {
     const client = createCopilotClient()
-    return client.createResponseInputTokens(payload)
+    return client.createResponseInputTokens(payload, options)
   }
 
-  delete(responseId: string): Promise<unknown> {
+  delete(responseId: string, options?: ResourceRequestOptions): Promise<unknown> {
     const client = createCopilotClient()
-    return client.deleteResponse(responseId)
+    return client.deleteResponse(responseId, options)
   }
 }
 

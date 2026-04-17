@@ -2,11 +2,9 @@ import consola from 'consola'
 
 import { inferModelFamily } from '~/core/capi/profile'
 import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
-import { fromTranslationFailure, HTTPError } from '~/lib/error'
+import { resolveModelOrThrow, withTranslationErrors } from '~/deliver/error'
 import { getTokenCount } from '~/lib/tokenizer'
 import { parseAnthropicCountTokensPayload } from '~/lib/validation'
-import { modelCache } from '~/state'
-import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 
 import { createAnthropicAdapter } from './shared'
 
@@ -39,28 +37,8 @@ export async function handleCountTokensCore(
   normalizeAnthropicRequestContext(anthropicPayload, headers)
 
   const adapter = createAnthropicAdapter()
-
-  let openAIPayload
-  try {
-    openAIPayload = adapter.toTokenCountPayload(anthropicPayload)
-  }
-  catch (error) {
-    if (error instanceof TranslationFailure) {
-      throw fromTranslationFailure(error)
-    }
-    throw error
-  }
-
-  const selectedModel = modelCache.findById(openAIPayload.model)
-
-  if (!selectedModel) {
-    throw new HTTPError(400, {
-      error: {
-        message: `Model not found for token counting: "${openAIPayload.model}"`,
-        type: 'invalid_request_error',
-      },
-    })
-  }
+  const openAIPayload = withTranslationErrors(() => adapter.toTokenCountPayload(anthropicPayload))
+  const selectedModel = resolveModelOrThrow(openAIPayload.model)
 
   const tokenCount = await getTokenCount(openAIPayload, selectedModel)
 
