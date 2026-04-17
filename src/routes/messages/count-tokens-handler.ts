@@ -3,9 +3,9 @@ import consola from 'consola'
 import { inferModelFamily } from '~/core/capi/profile'
 import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
 import { fromTranslationFailure, HTTPError } from '~/lib/error'
-import { state } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
 import { parseAnthropicCountTokensPayload } from '~/lib/validation'
+import { modelCache } from '~/state'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 
 import { createAnthropicAdapter } from './shared'
@@ -51,9 +51,7 @@ export async function handleCountTokensCore(
     throw error
   }
 
-  const selectedModel = state.cache.models?.data.find(
-    model => model.id === openAIPayload.model,
-  )
+  const selectedModel = modelCache.findById(openAIPayload.model)
 
   if (!selectedModel) {
     throw new HTTPError(400, {

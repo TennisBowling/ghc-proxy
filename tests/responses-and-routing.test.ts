@@ -9,9 +9,10 @@ import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bu
 import { CopilotClient } from '~/clients'
 import { getCachedConfig } from '~/lib/config'
 import { HTTPError } from '~/lib/error'
-import { state } from '~/lib/state'
+import { authStore, modelCache, responsesEmulatorState } from '~/state'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 import { translateAnthropicToResponsesPayload } from '~/translator/responses/anthropic-to-responses'
+
 import { ResponsesStreamTranslator } from '~/translator/responses/responses-stream-translator'
 
 import {
@@ -169,8 +170,8 @@ const originalConfig = structuredClone(getCachedConfig())
 
 beforeEach(() => {
   setupDefaultTestState()
-  state.config.showToken = false
-  state.config.upstreamTimeoutSeconds = undefined
+  authStore.showToken = false
+  authStore.upstreamTimeoutSeconds = undefined
 
   const config = getCachedConfig()
   for (const key of Object.keys(config)) {
@@ -200,7 +201,7 @@ describe('responses and routing', () => {
   test('/v1/responses transforms apply_patch before forwarding', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -246,7 +247,7 @@ describe('responses and routing', () => {
   test('/v1/responses defaults function tool strict to true', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -301,7 +302,7 @@ describe('responses and routing', () => {
   test('/v1/responses normalizes function parameter required arrays for Copilot', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -366,7 +367,7 @@ describe('responses and routing', () => {
   test('/v1/responses strips unsupported JSON Schema format annotations from function tools', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_1',
@@ -419,7 +420,7 @@ describe('responses and routing', () => {
   test('/v1/responses strips upstream-incompatible schema metadata from function tools', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_1',
@@ -495,7 +496,7 @@ describe('responses and routing', () => {
     const calls: Array<CapturedResponsesCall> = []
     const config = getCachedConfig()
     config.responsesApiContextManagementModels = ['gpt-4.1']
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -536,7 +537,7 @@ describe('responses and routing', () => {
     const config = getCachedConfig()
     config.responsesApiAutoContextManagement = true
     config.responsesApiContextManagementModels = ['gpt-4.1']
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', {
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', {
       supported_endpoints: ['/responses'],
       capabilities: {
         family: 'gpt',
@@ -554,7 +555,7 @@ describe('responses and routing', () => {
         tokenizer: 'o200k_base',
         type: 'chat',
       },
-    }))
+    })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -595,7 +596,7 @@ describe('responses and routing', () => {
   test('/v1/responses does not compact input by latest compaction by default', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -643,7 +644,7 @@ describe('responses and routing', () => {
     const calls: Array<CapturedResponsesCall> = []
     const config = getCachedConfig()
     config.responsesApiAutoCompactInput = true
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -688,7 +689,7 @@ describe('responses and routing', () => {
   test('/v1/responses rejects unsupported builtin tools explicitly', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_unused',
@@ -734,7 +735,7 @@ describe('responses and routing', () => {
   test('/v1/responses rejects unsupported web_search tool_choice explicitly', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_unused',
@@ -778,7 +779,7 @@ describe('responses and routing', () => {
   test('/v1/responses rejects external image URLs explicitly', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildVisionModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildVisionModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_unused',
@@ -827,7 +828,7 @@ describe('responses and routing', () => {
 
   test('/v1/responses validates payload shape before mutation', async () => {
     const app = createApp()
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     const response = await app.handle(new Request('http://localhost/v1/responses', {
       method: 'POST',
@@ -844,7 +845,7 @@ describe('responses and routing', () => {
   test('/v1/responses forces store=false on all upstream requests', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_store',
@@ -871,7 +872,7 @@ describe('responses and routing', () => {
   test('/v1/responses forces store=false even when client omits it', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_store_default',
@@ -896,7 +897,7 @@ describe('responses and routing', () => {
   test('/v1/responses strips item_reference items from input', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_strip_ref',
@@ -929,7 +930,7 @@ describe('responses and routing', () => {
   test('/v1/responses strips orphaned function_call_output items from input', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_strip_orphan',
@@ -967,7 +968,7 @@ describe('responses and routing', () => {
   test('/v1/responses strips both item_reference and orphaned function_call_output together', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_strip_combo',
@@ -1000,7 +1001,7 @@ describe('responses and routing', () => {
   test('/v1/responses strips phase field from input message items', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_strip_phase',
@@ -1038,7 +1039,7 @@ describe('responses and routing', () => {
   test('/v1/responses preserves input when no stripping is needed', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_no_strip',
@@ -1072,7 +1073,7 @@ describe('responses and routing', () => {
 
   test('/v1/responses surfaces upstream 400 errors (triggering payload dump)', async () => {
     const app = createApp()
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     // Mock createResponses to throw HTTPError(400) — this exercises the
     // strategy.ts catch block that calls dumpFailedPayload
@@ -1099,7 +1100,7 @@ describe('responses and routing', () => {
   test('/v1/responses consumes subagent markers and forwards root session context', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -1269,7 +1270,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     const createCalls: Array<CapturedResponsesCall> = []
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
       buildResponsesResult({
@@ -1353,7 +1354,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
       buildResponsesResult({
@@ -1398,7 +1399,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     const createCalls: Array<CapturedResponsesCall> = []
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([(
       async function* () {
@@ -1492,7 +1493,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     const createCalls: Array<CapturedResponsesCall> = []
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
       (
@@ -1586,7 +1587,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     const createCalls: Array<CapturedResponsesCall> = []
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
       buildResponsesResult({
@@ -1673,7 +1674,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     const createCalls: Array<CapturedResponsesCall> = []
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
       buildResponsesResult({
@@ -1739,7 +1740,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     const createCalls: Array<CapturedResponsesCall> = []
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([], createCalls)
 
@@ -1761,7 +1762,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
       buildResponsesResult({
         id: 'resp_emu_1',
@@ -1811,7 +1812,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator(4 * 60 * 60)
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
       buildResponsesResult({
         id: 'resp_emu_1',
@@ -1856,7 +1857,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
     const response = await app.handle(new Request('http://localhost/v1/responses', {
       method: 'POST',
@@ -1875,14 +1876,14 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
-    state.responsesEmulator.setResponse(buildResponsesResult({
+    responsesEmulatorState.setResponse(buildResponsesResult({
       id: 'resp_desc_page',
       model: 'gpt-5',
       conversation: { id: 'conv_desc_page' },
     }))
-    state.responsesEmulator.setInputItems('resp_desc_page', [
+    responsesEmulatorState.setInputItems('resp_desc_page', [
       { id: 'item_1', type: 'compaction', encrypted_content: 'enc_1' },
       { id: 'item_2', type: 'compaction', encrypted_content: 'enc_2' },
       { id: 'item_3', type: 'compaction', encrypted_content: 'enc_3' },
@@ -1910,7 +1911,7 @@ describe('responses and routing', () => {
     const app = createApp()
     enableOfficialResponsesEmulator()
     rejectUnexpectedEmulatorResourceCalls()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
     CopilotClient.prototype.createResponses = mockEmulatorCreateResponses([
       buildResponsesResult({
         id: 'resp_emu_1',
@@ -1961,7 +1962,7 @@ describe('responses and routing', () => {
   test('/v1/messages uses responses translation path for responses-only models', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses({
       id: 'resp_1',
@@ -2013,7 +2014,7 @@ describe('responses and routing', () => {
   test('/v1/messages uses native messages path when model supports it', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] })))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2046,7 +2047,7 @@ describe('responses and routing', () => {
   test('/v1/messages native path does not inject thinking or output_config', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] })))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2080,7 +2081,7 @@ describe('responses and routing', () => {
   test('/v1/messages native messages path preserves explicit thinking configuration', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('claude-sonnet-4.6', { supported_endpoints: ['/v1/messages'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-sonnet-4.6', { supported_endpoints: ['/v1/messages'] })))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2116,7 +2117,7 @@ describe('responses and routing', () => {
   test('/v1/messages native path drops nullable output_config effort before upstream', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('claude-opus-4.6-1m', { supported_endpoints: ['/v1/messages'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-opus-4.6-1m', { supported_endpoints: ['/v1/messages'] })))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2152,7 +2153,7 @@ describe('responses and routing', () => {
     const calls: Array<CapturedMessagesCall> = []
     const model = buildModel('claude-opus-4.6-1m', { supported_endpoints: ['/v1/messages'] })
     model.capabilities.supports.reasoning_effort = ['low', 'medium', 'high']
-    state.cache.models = buildModelsResponse(model)
+    modelCache.cacheModels(buildModelsResponse(model))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2191,7 +2192,7 @@ describe('responses and routing', () => {
     const calls: Array<CapturedMessagesCall> = []
     const model = buildModel('claude-opus-4.7', { supported_endpoints: ['/v1/messages'] })
     model.capabilities.supports.reasoning_effort = ['medium']
-    state.cache.models = buildModelsResponse(model)
+    modelCache.cacheModels(buildModelsResponse(model))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2225,7 +2226,7 @@ describe('responses and routing', () => {
   test('/v1/messages native path preserves output_config effort without model metadata', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('claude-sonnet-4.6', { supported_endpoints: ['/v1/messages'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-sonnet-4.6', { supported_endpoints: ['/v1/messages'] })))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2259,7 +2260,7 @@ describe('responses and routing', () => {
   test('/v1/messages native path strips output_config for models in deny-list', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] })))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2293,7 +2294,7 @@ describe('responses and routing', () => {
   test('/v1/messages native path strips cache_control.scope from system, messages, and tools', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-sonnet-4.5', { supported_endpoints: ['/v1/messages'] })))
 
     CopilotClient.prototype.createMessages = mockMessages({
       id: 'msg_1',
@@ -2355,10 +2356,10 @@ describe('responses and routing', () => {
   test('compact routing can move /v1/messages to configured small model', async () => {
     const app = createApp()
     const chatCalls: Array<CapturedChatCall> = []
-    state.cache.models = buildModelsResponse(
+    modelCache.cacheModels(buildModelsResponse(
       buildModel('claude-opus-4.6'),
       buildModel('gpt-4.1-mini'),
-    )
+    ))
 
     const config = getCachedConfig()
     config.smallModel = 'gpt-4.1-mini'
@@ -2404,10 +2405,10 @@ describe('responses and routing', () => {
   test('small-model routing preserves vision capability requirements', async () => {
     const app = createApp()
     const chatCalls: Array<CapturedChatCall> = []
-    state.cache.models = buildModelsResponse(
+    modelCache.cacheModels(buildModelsResponse(
       buildVisionModel('claude-opus-4.6'),
       buildModel('gpt-4.1-mini'),
-    )
+    ))
 
     const config = getCachedConfig()
     config.smallModel = 'gpt-4.1-mini'
@@ -2465,7 +2466,7 @@ describe('responses and routing', () => {
 
   test('/v1/messages responses streaming path emits anthropic error event on malformed upstream chunk', async () => {
     const app = createApp()
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses((async function* () {
       yield {
@@ -2733,7 +2734,7 @@ describe('responses translation policy', () => {
   test('adds additionalProperties false to object tool schemas on both direct and translated Responses paths', async () => {
     const app = createApp()
     const calls: Array<CapturedResponsesCall> = []
-    state.cache.models = buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-4.1', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_1',

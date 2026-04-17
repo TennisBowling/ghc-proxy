@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { getCachedConfig } from '~/lib/config'
 import { HTTPError } from '~/lib/error'
 import { getContextUpgradeTarget, isContextLengthError, resolveContextUpgrade, rewriteModel } from '~/lib/model-rewrite'
-import { state } from '~/lib/state'
 import { estimateAnthropicInputTokens } from '~/lib/tokenizer'
+import { modelCache } from '~/state'
 
 import { buildModel, buildModelsResponse, clearConfig } from './helpers'
 
 // ── Setup / Teardown ──
 
-let originalModels: typeof state.cache.models
+let originalModels: ReturnType<typeof modelCache.getModels>
 
 function setModelRewrites(rules: Array<{ from: string, to: string }>) {
   const config = getCachedConfig() as Record<string, unknown>
@@ -18,17 +18,22 @@ function setModelRewrites(rules: Array<{ from: string, to: string }>) {
 }
 
 beforeEach(() => {
-  originalModels = state.cache.models
-  state.cache.models = buildModelsResponse(
+  originalModels = modelCache.getModels()
+  modelCache.cacheModels(buildModelsResponse(
     buildModel('claude-opus-4.6'),
     buildModel('claude-opus-4.6-1m'),
     buildModel('claude-sonnet-4.5'),
-  )
+  ))
   clearConfig()
 })
 
 afterEach(() => {
-  state.cache.models = originalModels
+  if (originalModels !== undefined) {
+    modelCache.cacheModels(originalModels)
+  }
+  else {
+    modelCache.clearModels()
+  }
   clearConfig()
 })
 
@@ -64,7 +69,7 @@ describe('rewriteModel — normalization', () => {
   })
 
   test('no cached models — passes through unchanged', () => {
-    state.cache.models = undefined
+    modelCache.clearModels()
     const result = rewriteModel('claude-opus-4-6')
     expect(result.model).toBe('claude-opus-4-6')
     expect(result.model).toBe(result.originalModel)
@@ -285,7 +290,7 @@ describe('resolveContextUpgrade', () => {
   })
 
   test('skips when target model not in models list', () => {
-    state.cache.models = buildModelsResponse(buildModel('claude-opus-4.6'))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-opus-4.6')))
     expect(resolveContextUpgrade('claude-opus-4.6', 200_000)).toBeUndefined()
   })
 })
@@ -302,7 +307,7 @@ describe('getContextUpgradeTarget', () => {
   })
 
   test('returns undefined when target not in models list', () => {
-    state.cache.models = buildModelsResponse(buildModel('claude-opus-4.6'))
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-opus-4.6')))
     expect(getContextUpgradeTarget('claude-opus-4.6')).toBeUndefined()
   })
 })

@@ -4,7 +4,7 @@ import type {
   ResponsesPayload,
 } from '~/types'
 
-import { isResponsesApiContextManagementModel, shouldAutoCompactResponsesInput } from '~/lib/config'
+import { configStore } from '~/state'
 
 /** Default token threshold when model limits are unknown. */
 const DEFAULT_COMPACT_THRESHOLD = 50_000
@@ -60,7 +60,7 @@ export function applyContextManagement(
   if (payload.context_management !== undefined) {
     return
   }
-  if (!isResponsesApiContextManagementModel(payload.model)) {
+  if (!configStore.isContextManagementModel(payload.model)) {
     return
   }
 
@@ -72,7 +72,7 @@ export function applyContextManagement(
 export function compactInputByLatestCompaction(
   payload: ResponsesPayload,
 ): void {
-  if (!shouldAutoCompactResponsesInput()) {
+  if (!configStore.isAutoCompactResponsesInputEnabled()) {
     return
   }
   if (!Array.isArray(payload.input) || payload.input.length === 0) {

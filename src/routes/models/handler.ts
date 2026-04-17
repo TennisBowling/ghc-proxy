@@ -1,16 +1,17 @@
-import { cacheModels, createCopilotClient, state } from '~/lib/state'
+import { cacheModels, createCopilotClient } from '~/lib/state'
+import { modelCache } from '~/state'
 
 /**
  * Core handler for listing models.
  */
 export async function handleModelsCore(): Promise<object> {
-  if (!state.cache.models) {
+  if (!modelCache.getModels()) {
     // This should be handled by startup logic, but as a fallback.
     const copilotClient = createCopilotClient()
     await cacheModels(copilotClient)
   }
 
-  const models = state.cache.models?.data.map(model => ({
+  const models = modelCache.getModels()?.data.map(model => ({
     id: model.id,
     object: 'model',
     type: 'model',

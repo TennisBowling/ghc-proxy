@@ -5,7 +5,7 @@ import type { ResponseStreamEvent } from '~/types'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { CopilotClient } from '~/clients'
-import { state } from '~/lib/state'
+import { modelCache } from '~/state'
 import {
   buildGptModel,
   buildModelsResponse,
@@ -273,9 +273,7 @@ describe('cache correctness', () => {
     test('non-streaming: maps cached_tokens to cache_read_input_tokens and subtracts from input_tokens', async () => {
       const app = createApp()
       const calls: Array<CapturedResponsesCall> = []
-      state.cache.models = buildModelsResponse(
-        buildGptModel('gpt-5', { supported_endpoints: ['/responses'] }),
-      )
+      modelCache.cacheModels(buildModelsResponse(buildGptModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
       CopilotClient.prototype.createResponses = mockResponses({
         id: 'resp_cache_1',
@@ -332,9 +330,7 @@ describe('cache correctness', () => {
     test('streaming: message_start contains correct cache token counts', async () => {
       const app = createApp()
       const calls: Array<CapturedResponsesCall> = []
-      state.cache.models = buildModelsResponse(
-        buildGptModel('gpt-5', { supported_endpoints: ['/responses'] }),
-      )
+      modelCache.cacheModels(buildModelsResponse(buildGptModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
       CopilotClient.prototype.createResponses = mockResponses((async function* () {
         yield {
@@ -489,9 +485,7 @@ describe('cache correctness', () => {
     test('non-streaming: omits cache_read_input_tokens when no cached tokens', async () => {
       const app = createApp()
       const calls: Array<CapturedResponsesCall> = []
-      state.cache.models = buildModelsResponse(
-        buildGptModel('gpt-5', { supported_endpoints: ['/responses'] }),
-      )
+      modelCache.cacheModels(buildModelsResponse(buildGptModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
       CopilotClient.prototype.createResponses = mockResponses({
         id: 'resp_cache_2',
@@ -545,7 +539,7 @@ describe('cache correctness', () => {
     test('injects copilot_cache_control for GPT models via chat-completions', async () => {
       const app = createApp()
       const calls: Array<CapturedChatCall> = []
-      state.cache.models = buildModelsResponse(buildGptModel('gpt-4o'))
+      modelCache.cacheModels(buildModelsResponse(buildGptModel('gpt-4o')))
 
       CopilotClient.prototype.createChatCompletions = mockNonStreamingResponse({
         id: 'msg_gpt_1',

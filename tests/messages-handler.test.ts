@@ -1,26 +1,31 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { state } from '~/lib/state'
 import { processAnthropicBetaHeader } from '~/routes/messages/handler'
+import { modelCache } from '~/state'
 
 import { buildModel, buildModelsResponse, clearConfig } from './helpers'
 
 // ── Setup / Teardown ──
 
-let originalModels: typeof state.cache.models
+let originalModels: ReturnType<typeof modelCache.getModels>
 
 beforeEach(() => {
-  originalModels = state.cache.models
-  state.cache.models = buildModelsResponse(
+  originalModels = modelCache.getModels()
+  modelCache.cacheModels(buildModelsResponse(
     buildModel('claude-opus-4.6'),
     buildModel('claude-opus-4.6-1m'),
     buildModel('claude-sonnet-4.5'),
-  )
+  ))
   clearConfig()
 })
 
 afterEach(() => {
-  state.cache.models = originalModels
+  if (originalModels !== undefined) {
+    modelCache.cacheModels(originalModels)
+  }
+  else {
+    modelCache.clearModels()
+  }
   clearConfig()
 })
 

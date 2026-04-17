@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { CopilotClient } from '~/clients'
 import { getCachedConfig } from '~/lib/config'
-import { state } from '~/lib/state'
+import { authStore, modelCache } from '~/state'
 
 import {
   buildModel,
@@ -30,8 +30,8 @@ const originalConfig = structuredClone(getCachedConfig())
 
 beforeEach(() => {
   setupDefaultTestState()
-  state.config.showToken = false
-  state.config.upstreamTimeoutSeconds = undefined
+  authStore.showToken = false
+  authStore.upstreamTimeoutSeconds = undefined
 
   const config = getCachedConfig()
   for (const key of Object.keys(config)) {
@@ -109,7 +109,7 @@ function outputItemChunk(
 
 async function collectResponsesStream(chunks: Array<ServerSentEventMessage>): Promise<Array<StreamJsonEvent>> {
   const app = createApp('responses')
-  state.cache.models = buildModelsResponse(buildModel('gpt-5.4', { supported_endpoints: ['/responses'] }))
+  modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5.4', { supported_endpoints: ['/responses'] })))
 
   CopilotClient.prototype.createResponses = mockResponses(createSseStream(chunks), [])
 
@@ -285,7 +285,7 @@ describe('responses stream id normalization', () => {
 
   test('passes malformed json chunks through unchanged', async () => {
     const app = createApp('responses')
-    state.cache.models = buildModelsResponse(buildModel('gpt-5.4', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5.4', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(createSseStream([
       responseLifecycleChunk('response.created', 1, { id: 'resp_stable' }),

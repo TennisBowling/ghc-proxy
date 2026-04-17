@@ -1,9 +1,9 @@
 import consola from 'consola'
 
+import { modelCache } from '~/state'
+
 import { getCachedConfig, getContextUpgradeTokenThreshold } from './config'
 import { HTTPError } from './error'
-import { findModelById } from './model-capabilities'
-import { state } from './state'
 
 // ── Types ──
 
@@ -63,7 +63,7 @@ const DOT_RE = /\./g
  * dash/dot equivalence. Returns the canonical ID if found.
  */
 function normalizeToKnownModel(modelId: string): string | undefined {
-  const models = state.cache.models?.data
+  const models = modelCache.getModels()?.data
   if (!models)
     return undefined
 
@@ -118,7 +118,7 @@ export function hasContextUpgradeRule(model: string): boolean {
 /** Find the upgrade rule for a model whose target exists in Copilot's model list. */
 function findUpgradeRule(model: string) {
   for (const rule of CONTEXT_UPGRADE_RULES) {
-    if (model === rule.from && findModelById(rule.to)) {
+    if (model === rule.from && modelCache.findById(rule.to)) {
       return rule
     }
   }

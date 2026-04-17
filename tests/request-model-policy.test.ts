@@ -4,13 +4,13 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedConfig } from '~/lib/config'
 import { applyMessagesModelPolicy, isCompactRequest } from '~/lib/request-model-policy'
-import { state } from '~/lib/state'
+import { modelCache } from '~/state'
 
 import { buildModel, buildModelsResponse, clearConfig } from './helpers'
 
 // ── Setup / Teardown ──
 
-let originalModels: typeof state.cache.models
+let originalModels: ReturnType<typeof modelCache.getModels>
 
 function enableCompactRouting(smallModel: string) {
   const config = getCachedConfig() as Record<string, unknown>
@@ -28,18 +28,23 @@ function compactPayload(model: string): AnthropicMessagesPayload {
 }
 
 beforeEach(() => {
-  originalModels = state.cache.models
-  state.cache.models = buildModelsResponse(
+  originalModels = modelCache.getModels()
+  modelCache.cacheModels(buildModelsResponse(
     buildModel('claude-opus-4.6'),
     buildModel('claude-opus-4.6-1m'),
     buildModel('claude-sonnet-4.5'),
     buildModel('gpt-4.1-mini', { vendor: 'openai' }),
-  )
+  ))
   clearConfig()
 })
 
 afterEach(() => {
-  state.cache.models = originalModels
+  if (originalModels !== undefined) {
+    modelCache.cacheModels(originalModels)
+  }
+  else {
+    modelCache.clearModels()
+  }
   clearConfig()
 })
 

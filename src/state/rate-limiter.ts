@@ -5,6 +5,10 @@ import { sleep } from '~/lib/sleep'
 export class RateLimiter {
   private nextAvailableAt = 0
 
+  reset(): void {
+    this.nextAvailableAt = 0
+  }
+
   async acquire(intervalSeconds: number | undefined, waitMode: boolean): Promise<void> {
     if (intervalSeconds === undefined)
       return

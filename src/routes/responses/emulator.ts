@@ -19,8 +19,8 @@ import type {
 import { randomUUID } from 'node:crypto'
 
 import { HTTPError, throwInvalidRequestError } from '~/lib/error'
-import { state } from '~/lib/state'
 import { estimateResponsesInputTokens } from '~/lib/tokenizer'
+import { responsesEmulatorState } from '~/state'
 
 function cloneValue<T>(value: T): T {
   if (typeof globalThis.structuredClone === 'function') {
@@ -110,19 +110,19 @@ export function persistEmulatorResponse(
   response: ResponsesResult,
   effectiveInputItems: Array<ResponseInputItem>,
 ): void {
-  state.responsesEmulator.setResponse(response)
+  responsesEmulatorState.setResponse(response)
   if (response.conversation) {
-    state.responsesEmulator.setConversation(response.conversation)
-    state.responsesEmulator.setConversationHead(
+    responsesEmulatorState.setConversation(response.conversation)
+    responsesEmulatorState.setConversationHead(
       getConversationId(response.conversation),
       response.id,
     )
   }
-  state.responsesEmulator.setInputItems(response.id, effectiveInputItems)
+  responsesEmulatorState.setInputItems(response.id, effectiveInputItems)
 }
 
 export function getStoredResponseOrThrow(responseId: string): ResponsesResult {
-  const response = state.responsesEmulator.getResponse(responseId)
+  const response = responsesEmulatorState.getResponse(responseId)
   if (!response) {
     throw new HTTPError(404, {
       error: {
@@ -138,7 +138,7 @@ export function listStoredInputItemsOrThrow(
   responseId: string,
   params?: ResponseInputItemsListParams,
 ): ResponseInputItemsListResult {
-  const items = state.responsesEmulator.getInputItems(responseId)
+  const items = responsesEmulatorState.getInputItems(responseId)
   if (!items) {
     throw new HTTPError(404, {
       error: {
@@ -173,7 +173,7 @@ export function listStoredInputItemsOrThrow(
 
 export function deleteStoredResponseOrThrow(responseId: string) {
   getStoredResponseOrThrow(responseId)
-  return state.responsesEmulator.deleteResponse(responseId)
+  return responsesEmulatorState.deleteResponse(responseId)
 }
 
 export async function estimateEmulatorInputTokens(
@@ -240,7 +240,7 @@ function resolvePreviousResponse(
     return undefined
   }
 
-  const previousResponse = state.responsesEmulator.getResponse(previousResponseId)
+  const previousResponse = responsesEmulatorState.getResponse(previousResponseId)
   if (!previousResponse) {
     throwInvalidRequestError(
       'The selected previous_response_id could not be resolved.',
@@ -257,7 +257,7 @@ function resolveConversation(
 ): ResponseConversation | undefined {
   if (isConversationReference(conversation)) {
     const conversationId = getConversationId(conversation)
-    const existingConversation = state.responsesEmulator.getConversation(conversationId)
+    const existingConversation = responsesEmulatorState.getConversation(conversationId)
     if (!existingConversation) {
       throwInvalidRequestError(
         'The selected conversation could not be resolved.',
@@ -291,7 +291,7 @@ function resolveContinuationSourceResponseId(
     return undefined
   }
 
-  const head = state.responsesEmulator.getConversationHead(getConversationId(conversation))
+  const head = responsesEmulatorState.getConversationHead(getConversationId(conversation))
   if (!head) {
     throwInvalidRequestError(
       'The selected conversation could not be resolved.',
@@ -304,7 +304,7 @@ function resolveContinuationSourceResponseId(
 
 function buildContinuationHistory(responseId: string): Array<ResponseInputItem> {
   const previousResponse = getStoredResponseOrThrow(responseId)
-  const previousInput = state.responsesEmulator.getInputItems(responseId)
+  const previousInput = responsesEmulatorState.getInputItems(responseId)
   if (!previousInput) {
     throwInvalidRequestError(
       'The selected previous_response_id is missing stored input items.',

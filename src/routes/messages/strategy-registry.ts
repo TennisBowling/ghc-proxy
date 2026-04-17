@@ -8,16 +8,10 @@ import type { AnthropicMessagesPayload } from '~/translator'
 import type { Model } from '~/types'
 import consola from 'consola'
 import { CopilotTransport } from '~/adapters'
-import { getReasoningEffortForModel } from '~/lib/config'
 import { fromTranslationFailure } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
-import {
-  MESSAGES_ENDPOINT,
-  modelSupportsEndpoint,
-  modelSupportsOutputConfig,
-  RESPONSES_ENDPOINT,
-} from '~/lib/model-capabilities'
 import { appendModelStep } from '~/lib/request-logger'
+import { configStore, MESSAGES_ENDPOINT, modelCache, RESPONSES_ENDPOINT } from '~/state'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 import { translateAnthropicToResponsesPayload } from '~/translator/responses/anthropic-to-responses'
 import { SignatureCodec } from '~/translator/responses/signature-codec'
@@ -99,7 +93,7 @@ function sanitizeOutputConfig(
     return
   }
 
-  if (!modelSupportsOutputConfig(model)) {
+  if (!modelCache.supportsOutputConfig(model)) {
     delete payload.output_config
     return
   }
@@ -190,7 +184,7 @@ function sanitizeCacheControl(payload: AnthropicMessagesPayload): void {
 
 const nativeMessagesEntry: StrategyEntry = {
   name: 'native-messages',
-  canHandle: model => modelSupportsEndpoint(model, MESSAGES_ENDPOINT),
+  canHandle: model => modelCache.supportsEndpoint(model, MESSAGES_ENDPOINT),
   async execute(ctx) {
     filterThinkingBlocksForNativeMessages(ctx.anthropicPayload)
     sanitizeOutputConfig(ctx.anthropicPayload, ctx.selectedModel)
@@ -212,12 +206,12 @@ const nativeMessagesEntry: StrategyEntry = {
 
 const responsesApiEntry: StrategyEntry = {
   name: 'responses-api',
-  canHandle: model => modelSupportsEndpoint(model, RESPONSES_ENDPOINT),
+  canHandle: model => modelCache.supportsEndpoint(model, RESPONSES_ENDPOINT),
   async execute(ctx) {
     let responsesPayload
     try {
       responsesPayload = translateAnthropicToResponsesPayload(ctx.anthropicPayload, {
-        reasoningEffortResolver: getReasoningEffortForModel,
+        reasoningEffortResolver: model => configStore.getReasoningEffort(model),
       })
     }
     catch (error) {

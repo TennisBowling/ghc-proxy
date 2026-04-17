@@ -5,13 +5,13 @@ import consola from 'consola'
 import { CopilotTransport, OpenAIChatAdapter } from '~/adapters'
 import { normalizeChatRequestContext } from '~/core/capi/request-context'
 import { runStrategy } from '~/lib/execution-strategy'
-import { findModelById } from '~/lib/model-capabilities'
 import { applyModelRewrite } from '~/lib/model-rewrite'
 import { appendModelStep } from '~/lib/request-logger'
 import { createCopilotClient } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseOpenAIChatPayload } from '~/lib/validation'
+import { modelCache } from '~/state'
 
 import { createChatCompletionsStrategy } from './strategy'
 
@@ -44,7 +44,7 @@ export async function handleCompletionCore(
     steps.push({ tag: rewrite.reason, result: rewrite.model })
   }
 
-  const selectedModel = findModelById(payload.model)
+  const selectedModel = modelCache.findById(payload.model)
 
   try {
     if (selectedModel) {

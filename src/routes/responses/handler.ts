@@ -4,15 +4,14 @@ import type { ModelMappingInfo } from '~/lib/request-logger'
 import type { ResponseFunctionTool, ResponsesPayload, ResponsesResult, ResponseTool } from '~/types'
 import consola from 'consola'
 import { normalizeResponsesRequestContext, resolveInitiator } from '~/core/capi/request-context'
-import { shouldUseFunctionApplyPatch, shouldUseResponsesOfficialEmulator } from '~/lib/config'
 import { throwInvalidRequestError } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
 import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
-import { findModelById, modelSupportsEndpoint, RESPONSES_ENDPOINT } from '~/lib/model-capabilities'
 import { applyModelRewrite } from '~/lib/model-rewrite'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseResponsesPayload } from '~/lib/validation'
+import { configStore, modelCache, RESPONSES_ENDPOINT } from '~/state'
 
 import { applyContextManagement, compactInputByLatestCompaction, getResponsesRequestOptions } from './context-management'
 import { decorateStoredResponse, persistEmulatorResponse, prepareEmulatorRequest } from './emulator'
@@ -39,7 +38,7 @@ export async function handleResponsesCore(
 ): Promise<ResponsesCoreResult> {
   const payload = parseResponsesPayload(body)
   const requestContext = normalizeResponsesRequestContext(payload, headers)
-  const emulatorMode = shouldUseResponsesOfficialEmulator()
+  const emulatorMode = configStore.isEmulatorEnabled()
   const emulatorPrepared = emulatorMode
     ? prepareEmulatorRequest(payload)
     : undefined
@@ -53,14 +52,14 @@ export async function handleResponsesCore(
   applyResponsesInputPolicies(effectivePayload)
   compactInputByLatestCompaction(effectivePayload)
 
-  const selectedModel = findModelById(effectivePayload.model)
+  const selectedModel = modelCache.findById(effectivePayload.model)
   if (!selectedModel) {
     throwInvalidRequestError(
       'The selected model could not be resolved.',
       'model',
     )
   }
-  if (!modelSupportsEndpoint(selectedModel, RESPONSES_ENDPOINT)) {
+  if (!modelCache.supportsEndpoint(selectedModel, RESPONSES_ENDPOINT)) {
     throwInvalidRequestError(
       'The selected model does not support the responses endpoint.',
       'model',
@@ -152,7 +151,7 @@ function isResponseFunctionTool(tool: ResponseTool): tool is ResponseFunctionToo
 }
 
 function applyFunctionApplyPatch(payload: ResponsesPayload): void {
-  if (!shouldUseFunctionApplyPatch() || !Array.isArray(payload.tools)) {
+  if (!configStore.isFunctionApplyPatchEnabled() || !Array.isArray(payload.tools)) {
     return
   }
 

@@ -1,10 +1,10 @@
-import { state } from '~/lib/state'
+import { authStore } from '~/state'
 
 /**
  * Core handler for retrieving the token.
  */
 export function handleTokenCore(): object {
   return {
-    token: state.auth.copilotToken,
+    token: authStore.copilotToken,
   }
 }

@@ -1,4 +1,4 @@
-import { state } from '~/lib/state'
+import { authStore } from '~/state'
 
 const DEFAULT_TIMEOUT_MS = 1_800_000 // 30 minutes
 
@@ -30,8 +30,8 @@ export function createUpstreamSignal(clientSignal?: AbortSignal, timeoutMs = DEF
 export function createUpstreamSignalFromConfig(clientSignal: AbortSignal) {
   return createUpstreamSignal(
     clientSignal,
-    state.config.upstreamTimeoutSeconds !== undefined
-      ? state.config.upstreamTimeoutSeconds * 1000
+    authStore.upstreamTimeoutSeconds !== undefined
+      ? authStore.upstreamTimeoutSeconds * 1000
       : undefined,
   )
 }

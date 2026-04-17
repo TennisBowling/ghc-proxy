@@ -1,22 +1,27 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { state } from '~/lib/state'
+import { modelCache } from '~/state'
 
 import { buildGptModel, buildModelsResponse, createApp } from './helpers'
 
-const originalModels = state.cache.models
+const originalModels = modelCache.getModels()
 
 beforeEach(() => {
-  state.cache.models = undefined
+  modelCache.clearModels()
 })
 
 afterEach(() => {
-  state.cache.models = originalModels
+  if (originalModels !== undefined) {
+    modelCache.cacheModels(originalModels)
+  }
+  else {
+    modelCache.clearModels()
+  }
 })
 
 describe('POST /v1/messages/count_tokens', () => {
   test('accepts payload without max_tokens and returns token count', async () => {
-    state.cache.models = buildModelsResponse(buildGptModel('claude-haiku-4.5'))
+    modelCache.cacheModels(buildModelsResponse(buildGptModel('claude-haiku-4.5')))
     const app = createApp('messages')
 
     const response = await app.handle(new Request('http://localhost/v1/messages/count_tokens', {
@@ -37,7 +42,7 @@ describe('POST /v1/messages/count_tokens', () => {
   })
 
   test('returns 400 on invalid payload instead of fake success', async () => {
-    state.cache.models = buildModelsResponse(buildGptModel('claude-haiku-4.5'))
+    modelCache.cacheModels(buildModelsResponse(buildGptModel('claude-haiku-4.5')))
     const app = createApp('messages')
 
     const response = await app.handle(new Request('http://localhost/v1/messages/count_tokens', {
@@ -62,7 +67,7 @@ describe('POST /v1/messages/count_tokens', () => {
     // by comparing against a known baseline.
     // Without the fix, GPT models get 0 overhead and 1.0x factor.
     // With the fix, they should get overhead + factor applied.
-    state.cache.models = buildModelsResponse(buildGptModel('gpt-5.4-mini'))
+    modelCache.cacheModels(buildModelsResponse(buildGptModel('gpt-5.4-mini')))
     const app = createApp('messages')
 
     // Request WITHOUT tools — gives us raw tokenized count
@@ -101,7 +106,7 @@ describe('POST /v1/messages/count_tokens', () => {
   })
 
   test('returns 400 when model cannot be resolved', async () => {
-    state.cache.models = buildModelsResponse(buildGptModel('gpt-4.1'))
+    modelCache.cacheModels(buildModelsResponse(buildGptModel('gpt-4.1')))
     const app = createApp('messages')
 
     const response = await app.handle(new Request('http://localhost/v1/messages/count_tokens', {

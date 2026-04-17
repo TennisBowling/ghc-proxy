@@ -3,13 +3,12 @@ import type { ModelMappingInfo, ModelTransformStep } from '~/lib/request-logger'
 import consola from 'consola'
 
 import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
-import { shouldContextUpgrade } from '~/lib/config'
-import { findModelById } from '~/lib/model-capabilities'
 import { applyModelRewrite, getContextUpgradeTarget, isContextLengthError } from '~/lib/model-rewrite'
 import { applyMessagesModelPolicy } from '~/lib/request-model-policy'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseAnthropicMessagesPayload } from '~/lib/validation'
+import { configStore, modelCache } from '~/state'
 
 import { defaultStrategyRegistry, selectStrategy } from './strategy-registry'
 
@@ -46,7 +45,7 @@ export function processAnthropicBetaHeader(
     if (CONTEXT_BETA_RE.test(value)) {
       // Always strip context-* betas — Copilot doesn't understand them.
       // If context upgrade is enabled and a target exists, apply it.
-      if (!upgradeTarget && shouldContextUpgrade()) {
+      if (!upgradeTarget && configStore.isContextUpgradeEnabled()) {
         const target = getContextUpgradeTarget(model)
         if (target) {
           upgradeTarget = target
@@ -117,7 +116,7 @@ export async function handleMessagesCore(
     )
   }
 
-  const selectedModel = findModelById(anthropicPayload.model)
+  const selectedModel = modelCache.findById(anthropicPayload.model)
   const upstreamSignal = createUpstreamSignalFromConfig(signal)
   const copilotClient = createCopilotClient()
 
@@ -139,7 +138,7 @@ export async function handleMessagesCore(
     strategyResult = await entry.execute(strategyCtx)
   }
   catch (error) {
-    const upgradeTarget = shouldContextUpgrade() && isContextLengthError(error)
+    const upgradeTarget = configStore.isContextUpgradeEnabled() && isContextLengthError(error)
       ? getContextUpgradeTarget(anthropicPayload.model)
       : undefined
 
@@ -150,7 +149,7 @@ export async function handleMessagesCore(
       `Context length exceeded, retrying: ${anthropicPayload.model} → ${upgradeTarget}`,
     )
     anthropicPayload.model = upgradeTarget
-    const retryModel = findModelById(upgradeTarget)
+    const retryModel = modelCache.findById(upgradeTarget)
     const retrySignal = createUpstreamSignalFromConfig(signal)
     const retryEntry = selectStrategy(defaultStrategyRegistry, retryModel)
     strategyResult = await retryEntry.execute({

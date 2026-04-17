@@ -21,12 +21,12 @@ import { Elysia } from 'elysia'
 
 import { getCachedConfig } from '~/lib/config'
 import { HTTPError } from '~/lib/error'
-import { state } from '~/lib/state'
 import { createCompletionRoutes } from '~/routes/chat-completions/route'
 import { createEmbeddingRoutes } from '~/routes/embeddings/route'
 import { createMessageRoutes } from '~/routes/messages/route'
 import { createModelRoutes } from '~/routes/models/route'
 import { createResponsesRoutes } from '~/routes/responses/route'
+import { authStore, modelCache, rateLimiter, responsesEmulatorState } from '~/state'
 
 const SSE_BLOCK_SEPARATOR_RE = /\r?\n\r?\n/
 const SSE_LINE_SEPARATOR_RE = /\r?\n/
@@ -304,27 +304,62 @@ export function mockEmbeddings(
 // ── State Snapshot ──
 
 export interface StateSnapshot {
-  auth: typeof state.auth
-  config: typeof state.config
-  cache: typeof state.cache
-  rateLimit: typeof state.rateLimit
+  copilotToken: typeof authStore.copilotToken
+  copilotApiBase: typeof authStore.copilotApiBase
+  githubToken: typeof authStore.githubToken
+  gheDomain: typeof authStore.gheDomain
+  accountType: typeof authStore.accountType
+  manualApprove: typeof authStore.manualApprove
+  rateLimitSeconds: typeof authStore.rateLimitSeconds
+  rateLimitWait: typeof authStore.rateLimitWait
+  showToken: typeof authStore.showToken
+  upstreamTimeoutSeconds: typeof authStore.upstreamTimeoutSeconds
+  models: ReturnType<typeof modelCache.getModels>
+  vsCodeVersion: ReturnType<typeof modelCache.getVSCodeVersion>
 }
 
 export function saveStateSnapshot(): StateSnapshot {
   return {
-    auth: { ...state.auth },
-    config: { ...state.config },
-    cache: { ...state.cache },
-    rateLimit: { ...state.rateLimit },
+    copilotToken: authStore.copilotToken,
+    copilotApiBase: authStore.copilotApiBase,
+    githubToken: authStore.githubToken,
+    gheDomain: authStore.gheDomain,
+    accountType: authStore.accountType,
+    manualApprove: authStore.manualApprove,
+    rateLimitSeconds: authStore.rateLimitSeconds,
+    rateLimitWait: authStore.rateLimitWait,
+    showToken: authStore.showToken,
+    upstreamTimeoutSeconds: authStore.upstreamTimeoutSeconds,
+    models: modelCache.getModels(),
+    vsCodeVersion: modelCache.getVSCodeVersion(),
   }
 }
 
 export function restoreStateSnapshot(snapshot: StateSnapshot) {
-  state.auth = { ...snapshot.auth }
-  state.config = { ...snapshot.config }
-  state.cache = { ...snapshot.cache }
-  state.rateLimit = { ...snapshot.rateLimit }
-  state.responsesEmulator.clear()
+  authStore.copilotToken = snapshot.copilotToken
+  authStore.copilotApiBase = snapshot.copilotApiBase
+  authStore.githubToken = snapshot.githubToken
+  authStore.gheDomain = snapshot.gheDomain
+  authStore.accountType = snapshot.accountType
+  authStore.manualApprove = snapshot.manualApprove
+  authStore.rateLimitSeconds = snapshot.rateLimitSeconds
+  authStore.rateLimitWait = snapshot.rateLimitWait
+  authStore.showToken = snapshot.showToken
+  authStore.upstreamTimeoutSeconds = snapshot.upstreamTimeoutSeconds
+  if (snapshot.models !== undefined) {
+    modelCache.cacheModels(snapshot.models)
+  }
+  else {
+    modelCache.clearModels()
+  }
+  if (snapshot.vsCodeVersion !== undefined) {
+    modelCache.setVSCodeVersion(snapshot.vsCodeVersion)
+  }
+  else {
+    modelCache.clearVSCodeVersion()
+  }
+  rateLimiter.reset()
+  responsesEmulatorState.clear()
 }
 
 // ── Cache Checkpoint Assertions ──
@@ -343,15 +378,15 @@ export function expectCacheCheckpoints(payload: CapiChatCompletionsPayload) {
 // ── Default Test State Setup ──
 
 export function setupDefaultTestState() {
-  state.auth.copilotToken = 'test-token'
-  state.cache.vsCodeVersion = '1.99.0'
-  state.cache.models = buildModelsResponse(buildModel('claude-sonnet-4.5'))
-  state.config.accountType = 'individual'
-  state.config.manualApprove = false
-  state.config.rateLimitSeconds = undefined
-  state.config.rateLimitWait = false
-  state.rateLimit.nextAvailableAt = undefined
-  state.responsesEmulator.clear()
+  authStore.copilotToken = 'test-token'
+  authStore.accountType = 'individual'
+  authStore.manualApprove = false
+  authStore.rateLimitSeconds = undefined
+  authStore.rateLimitWait = false
+  modelCache.setVSCodeVersion('1.99.0')
+  modelCache.cacheModels(buildModelsResponse(buildModel('claude-sonnet-4.5')))
+  rateLimiter.reset()
+  responsesEmulatorState.clear()
 }
 
 // ── Config Helpers ──

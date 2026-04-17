@@ -1,9 +1,10 @@
 import type { AnthropicMessagesPayload } from '~/translator'
 import type { Model } from '~/types'
 
-import { getSmallModel, shouldCompactUseSmallModel, shouldContextUpgrade } from './config'
+import { configStore, modelCache } from '~/state'
+
+import { getSmallModel, shouldCompactUseSmallModel } from './config'
 import {
-  findModelById,
   modelSupportsAdaptiveThinking,
   modelSupportsToolCalls,
   modelSupportsVision,
@@ -33,7 +34,7 @@ export function applyMessagesModelPolicy(
   }
 
   // Context upgrade: route to extended-context variant for large payloads.
-  if (shouldContextUpgrade() && hasContextUpgradeRule(payload.model)) {
+  if (configStore.isContextUpgradeEnabled() && hasContextUpgradeRule(payload.model)) {
     const contextUpgradeTarget = resolveContextUpgrade(
       payload.model,
       estimateAnthropicInputTokens(payload),
@@ -50,8 +51,8 @@ export function applyMessagesModelPolicy(
     return { originalModel, routedModel: originalModel }
   }
 
-  const originalSelection = findModelById(originalModel)
-  const smallSelection = findModelById(smallModel)
+  const originalSelection = modelCache.findById(originalModel)
+  const smallSelection = modelCache.findById(smallModel)
 
   if (canRouteToSmallModel(payload, originalSelection, smallSelection)) {
     payload.model = smallModel

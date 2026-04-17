@@ -24,12 +24,20 @@ export class ModelCache {
     this.models = models
   }
 
+  clearModels(): void {
+    this.models = undefined
+  }
+
   getModels(): ModelsResponse | undefined {
     return this.models
   }
 
   setVSCodeVersion(version: string): void {
     this.vsCodeVersion = version
+  }
+
+  clearVSCodeVersion(): void {
+    this.vsCodeVersion = undefined
   }
 
   getVSCodeVersion(): string | undefined {

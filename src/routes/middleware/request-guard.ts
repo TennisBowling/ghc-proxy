@@ -1,8 +1,7 @@
 import { Elysia } from 'elysia'
 
 import { awaitApproval } from '~/lib/approval'
-import { checkRateLimit } from '~/lib/rate-limit'
-import { state } from '~/lib/state'
+import { authStore, rateLimiter } from '~/state'
 
 /**
  * Elysia macro for request guard middleware.
@@ -25,9 +24,9 @@ export const requestGuardPlugin = new Elysia({ name: 'request-guard' })
  * Exported for direct use where the plugin is not applicable (e.g., tests).
  */
 export async function runRequestGuard(): Promise<void> {
-  await checkRateLimit(state)
+  await rateLimiter.acquire(authStore.rateLimitSeconds, authStore.rateLimitWait)
 
-  if (state.config.manualApprove) {
+  if (authStore.manualApprove) {
     await awaitApproval()
   }
 }

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { CopilotClient } from '~/clients'
 import { getCachedConfig } from '~/lib/config'
-import { state } from '~/lib/state'
+import { modelCache } from '~/state'
 import {
   buildModel,
   buildModelsResponse,
@@ -51,7 +51,7 @@ describe('API smoke', () => {
     const config = getCachedConfig() as Record<string, unknown>
     config.responsesOfficialEmulator = true
     config.responsesOfficialEmulatorTtlSeconds = 14_400
-    state.cache.models = buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] }))
+    modelCache.cacheModels(buildModelsResponse(buildModel('gpt-5', { supported_endpoints: ['/responses'] })))
 
     CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
       id: 'resp_smoke_1',
@@ -611,7 +611,7 @@ describe('API smoke', () => {
 
   test('OpenAI models returns the official list schema for cached Copilot models', async () => {
     const app = createApp()
-    state.cache.models = buildModelsResponse(
+    modelCache.cacheModels(buildModelsResponse(
       buildModel('claude-sonnet-4.5', {
         vendor: 'Anthropic',
         name: 'Claude Sonnet 4.5',
@@ -620,7 +620,7 @@ describe('API smoke', () => {
         vendor: 'Azure OpenAI',
         name: 'Embedding V3 small',
       }),
-    )
+    ))
 
     const response = await app.handle(new Request('http://localhost/v1/models'))
 
