@@ -1,3 +1,5 @@
+import type { UpstreamRequestQueue } from '~/lib/upstream-request-queue'
+
 export interface ClientAuth {
   githubToken?: string
   copilotToken?: string
@@ -14,4 +16,5 @@ export interface ClientConfig {
 
 export interface ClientDeps {
   fetch?: typeof fetch
+  requestQueue?: UpstreamRequestQueue
 }

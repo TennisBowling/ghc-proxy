@@ -5,6 +5,7 @@ import type {
   CapiRequestContext,
 } from '~/core/capi'
 import type { CopilotHeaderOptions } from '~/lib/api-config'
+import type { QueuedUpstreamResponse, UpstreamRequestQueue } from '~/lib/upstream-request-queue'
 import type { AnthropicMessagesPayload } from '~/translator'
 import type {
   EmbeddingRequest,
@@ -34,15 +35,22 @@ interface RequestOptions {
   extraHeaders?: Record<string, string>
 }
 
+interface FetchParams {
+  url: string
+  init: RequestInit
+}
+
 export class CopilotClient {
   private auth: ClientAuth
   private config: ClientConfig
   private fetchImpl: typeof fetch
+  private requestQueue: UpstreamRequestQueue | undefined
 
   constructor(auth: ClientAuth, config: ClientConfig, deps?: ClientDeps) {
     this.auth = auth
     this.config = config
     this.fetchImpl = deps?.fetch ?? fetch
+    this.requestQueue = deps?.requestQueue
   }
 
   private requireToken(): void {
@@ -56,28 +64,37 @@ export class CopilotClient {
     path: string,
     errorMessage: string,
     options: RequestOptions = {},
-  ): Promise<Response> {
+  ): Promise<QueuedUpstreamResponse> {
     this.requireToken()
 
     const headers = options.extraHeaders
       ? { ...copilotHeaders(this.auth, this.config, options.headerOptions), ...options.extraHeaders }
       : copilotHeaders(this.auth, this.config, options.headerOptions)
 
-    const response = await this.fetchImpl(
-      `${copilotBaseUrl(this.config)}${path}`,
-      {
+    const url = `${copilotBaseUrl(this.config)}${path}`
+    const request = {
+      url,
+      init: {
         method: options.method,
         headers,
         body: options.body,
         signal: options.signal,
       },
-    )
-
-    if (!response.ok) {
-      await throwUpstreamError(errorMessage, response)
     }
 
-    return response
+    const queuedResponse = await this.fetchWithQueue(request)
+    const { response } = queuedResponse
+
+    if (!response.ok) {
+      try {
+        await throwUpstreamError(errorMessage, response)
+      }
+      finally {
+        queuedResponse.release()
+      }
+    }
+
+    return queuedResponse
   }
 
   /** Fetch and parse JSON response */
@@ -86,8 +103,13 @@ export class CopilotClient {
     errorMessage: string,
     options?: RequestOptions,
   ): Promise<T> {
-    const response = await this.request(path, errorMessage, options)
-    return (await response.json()) as T
+    const { response, release } = await this.request(path, errorMessage, options)
+    try {
+      return (await response.json()) as T
+    }
+    finally {
+      release()
+    }
   }
 
   /** POST payload, return parsed JSON or SSE stream based on payload.stream */
@@ -97,17 +119,39 @@ export class CopilotClient {
     errorMessage: string,
     options?: Omit<RequestOptions, 'method' | 'body'>,
   ) {
-    const response = await this.request(path, errorMessage, {
+    const { response, release } = await this.request(path, errorMessage, {
       method: 'POST',
       body: JSON.stringify(payload),
       ...options,
     })
 
     if (payload.stream) {
-      return events(response)
+      return withRelease(events(response), release)
     }
 
-    return (await response.json()) as T
+    try {
+      return (await response.json()) as T
+    }
+    finally {
+      release()
+    }
+  }
+
+  private async fetchWithQueue(
+    request: FetchParams,
+  ): Promise<QueuedUpstreamResponse> {
+    const fetcher = () => this.fetchImpl(request.url, request.init)
+    if (this.requestQueue) {
+      return this.requestQueue.dispatch(fetcher, {
+        method: request.init.method,
+        url: request.url,
+      })
+    }
+
+    return {
+      response: await fetcher(),
+      release: () => {},
+    }
   }
 
   async createChatCompletions(
@@ -342,4 +386,16 @@ export function isNonStreamingResponse(
   response: Awaited<ReturnType<CopilotClient['createChatCompletions']>>,
 ): response is CapiChatCompletionResponse {
   return Object.hasOwn(response, 'choices')
+}
+
+async function* withRelease<T>(
+  iterable: AsyncIterable<T>,
+  release: () => void,
+): AsyncGenerator<T> {
+  try {
+    yield* iterable
+  }
+  finally {
+    release()
+  }
 }

@@ -35,6 +35,10 @@ const configFileSchema = z.object({
   modelRewrites: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
   contextUpgrade: z.boolean().optional(),
   contextUpgradeTokenThreshold: z.number().int().positive().optional(),
+  upstreamQueueConcurrency: z.number().int().positive().optional(),
+  upstreamQueueMaxRetries: z.number().int().nonnegative().optional(),
+  upstreamQueueBaseDelaySeconds: z.number().int().nonnegative().optional(),
+  upstreamQueueMaxDelaySeconds: z.number().int().positive().optional(),
   gheDomain: z.string().optional(),
 }).passthrough()
 

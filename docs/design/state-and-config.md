@@ -39,6 +39,10 @@ interface RuntimeConfig {
   rateLimitWait: boolean // Queue (true) or error (false) on limit
   showToken: boolean // Display token in logs
   upstreamTimeoutSeconds?: number // Upstream request timeout
+  upstreamQueueConcurrency?: number // Concurrent Copilot upstream occupancy
+  upstreamQueueMaxRetries?: number // Max retries for upstream 429
+  upstreamQueueBaseDelaySeconds?: number // Base retry delay when Retry-After is absent
+  upstreamQueueMaxDelaySeconds?: number // Max retry delay
 }
 ```
 
@@ -100,6 +104,12 @@ interface ConfigFile {
   // Reasoning
   modelReasoningEfforts?: Record<string, ReasoningEffort> // Per-model effort defaults
 
+  // Copilot upstream queue
+  upstreamQueueConcurrency?: number // Concurrent upstream occupancy (default 10)
+  upstreamQueueMaxRetries?: number // Max retries for upstream 429 (default 6)
+  upstreamQueueBaseDelaySeconds?: number // Base backoff delay (default 2)
+  upstreamQueueMaxDelaySeconds?: number // Max backoff delay (default 60)
+
   // GitHub Enterprise
   gheDomain?: string // GitHub Enterprise domain
 }
@@ -119,6 +129,10 @@ The `start` command maps CLI flags to RuntimeConfig:
 | `--manual-approve`     | `manualApprove`           | `false`        |
 | `--show-token`         | `showToken`               | `false`        |
 | `--upstream-timeout`   | `upstreamTimeoutSeconds`  | (none)         |
+| `--upstream-queue-concurrency` | `upstreamQueueConcurrency` | `10`     |
+| `--upstream-queue-retries` | `upstreamQueueMaxRetries` | `6`       |
+| `--upstream-queue-base-delay` | `upstreamQueueBaseDelaySeconds` | `2` |
+| `--upstream-queue-max-delay` | `upstreamQueueMaxDelaySeconds` | `60` |
 | `--proxy-env`          | (http proxy setup)        | `false`        |
 | `--claude-code`        | (interactive setup)       | `false`        |
 
@@ -133,7 +147,7 @@ Override configuration values:
 | `MODEL_FALLBACK_CLAUDE_SONNET`  | `config.modelFallback.claudeSonnet` |
 | `MODEL_FALLBACK_CLAUDE_HAIKU`   | `config.modelFallback.claudeHaiku` |
 
-Priority: Environment variable > Config file > Default value.
+Priority: CLI argument > Environment variable > Config file > Default value.
 
 ## Startup Sequence
 
@@ -169,6 +183,8 @@ Two modes controlled by `rateLimitWait`:
 **Queue mode** (`--wait` set):
 - If a request arrives too early, delay it until the rate limit window passes
 - The request is held in-process (not queued externally)
+
+This local request guard is separate from the Copilot upstream queue. The upstream queue is always active for Copilot API calls and handles upstream HTTP 429 with global back-pressure and retry. See [Upstream Request Queue](upstream-request-queue.md).
 
 ## Token Lifecycle
 

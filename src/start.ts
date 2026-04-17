@@ -10,7 +10,7 @@ import { ensurePaths } from './lib/paths'
 import { initProxyFromEnv } from './lib/proxy'
 import { generateEnvScript } from './lib/shell'
 import { printStartupBanner } from './lib/startup-banner'
-import { cacheModels, cacheVSCodeVersion, createCopilotClient, state } from './lib/state'
+import { cacheModels, cacheVSCodeVersion, configureUpstreamRequestQueue, createCopilotClient, state } from './lib/state'
 import { setupCopilotToken, setupGitHubToken } from './lib/token'
 import { createServer } from './server'
 
@@ -27,6 +27,10 @@ interface RunServerOptions {
   proxyEnv: boolean
   idleTimeoutSeconds?: number
   upstreamTimeoutSeconds?: number
+  upstreamQueueConcurrency?: number
+  upstreamQueueMaxRetries?: number
+  upstreamQueueBaseDelaySeconds?: number
+  upstreamQueueMaxDelaySeconds?: number
   gheDomain?: string
 }
 
@@ -115,10 +119,27 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   await ensurePaths()
   await readConfig()
+  const cachedConfig = getCachedConfig()
+
+  const upstreamQueueConcurrency = options.upstreamQueueConcurrency ?? cachedConfig.upstreamQueueConcurrency
+  const upstreamQueueMaxRetries = options.upstreamQueueMaxRetries ?? cachedConfig.upstreamQueueMaxRetries
+  const upstreamQueueBaseDelaySeconds = options.upstreamQueueBaseDelaySeconds ?? cachedConfig.upstreamQueueBaseDelaySeconds
+  const upstreamQueueMaxDelaySeconds = options.upstreamQueueMaxDelaySeconds ?? cachedConfig.upstreamQueueMaxDelaySeconds
+
+  state.config.upstreamQueueConcurrency = upstreamQueueConcurrency
+  state.config.upstreamQueueMaxRetries = upstreamQueueMaxRetries
+  state.config.upstreamQueueBaseDelaySeconds = upstreamQueueBaseDelaySeconds
+  state.config.upstreamQueueMaxDelaySeconds = upstreamQueueMaxDelaySeconds
+  configureUpstreamRequestQueue({
+    concurrency: upstreamQueueConcurrency,
+    maxRetries: upstreamQueueMaxRetries,
+    baseDelayMs: secondsToMs(upstreamQueueBaseDelaySeconds),
+    maxDelayMs: secondsToMs(upstreamQueueMaxDelaySeconds),
+  })
 
   // Load persisted GHE domain from config, then override with CLI arg if provided.
   // Pass --ghe-domain "" (empty string) to explicitly clear a persisted domain.
-  state.auth.gheDomain = getCachedConfig().gheDomain
+  state.auth.gheDomain = cachedConfig.gheDomain
   if (options.gheDomain !== undefined) {
     state.auth.gheDomain = options.gheDomain ? normalizeGheDomain(options.gheDomain) : undefined
   }
@@ -161,6 +182,10 @@ function parseIntArg(raw: string | undefined, name: string, fallbackMsg: string)
     return undefined
   }
   return n
+}
+
+function secondsToMs(seconds: number | undefined): number | undefined {
+  return seconds === undefined ? undefined : seconds * 1000
 }
 
 export const start = defineCommand({
@@ -237,6 +262,22 @@ export const start = defineCommand({
       default: '1800',
       description: 'Upstream request timeout in seconds (0 to disable)',
     },
+    'upstream-queue-concurrency': {
+      type: 'string',
+      description: 'Maximum concurrent Copilot upstream requests (default: 1)',
+    },
+    'upstream-queue-retries': {
+      type: 'string',
+      description: 'Maximum retries for upstream 429 responses (default: 6)',
+    },
+    'upstream-queue-base-delay': {
+      type: 'string',
+      description: 'Base delay in seconds for upstream 429 backoff when Retry-After is absent (default: 2)',
+    },
+    'upstream-queue-max-delay': {
+      type: 'string',
+      description: 'Maximum delay in seconds for upstream 429 backoff (default: 60)',
+    },
     'ghe-domain': {
       alias: 'ghe',
       type: 'string',
@@ -247,6 +288,10 @@ export const start = defineCommand({
     const rateLimit = parseIntArg(args['rate-limit'], 'rate-limit', 'Rate limiting disabled.')
     const idleTimeoutSeconds = parseIntArg(args['idle-timeout'], 'idle-timeout', 'Falling back to Bun default.')
     const upstreamTimeoutSeconds = parseIntArg(args['upstream-timeout'], 'upstream-timeout', 'Falling back to default (300s).')
+    const upstreamQueueConcurrency = parseIntArg(args['upstream-queue-concurrency'], 'upstream-queue-concurrency', 'Using default upstream queue concurrency.')
+    const upstreamQueueMaxRetries = parseIntArg(args['upstream-queue-retries'], 'upstream-queue-retries', 'Using default upstream queue retry count.')
+    const upstreamQueueBaseDelaySeconds = parseIntArg(args['upstream-queue-base-delay'], 'upstream-queue-base-delay', 'Using default upstream queue base delay.')
+    const upstreamQueueMaxDelaySeconds = parseIntArg(args['upstream-queue-max-delay'], 'upstream-queue-max-delay', 'Using default upstream queue max delay.')
 
     return runServer({
       port: Number.parseInt(args.port, 10),
@@ -261,6 +306,10 @@ export const start = defineCommand({
       proxyEnv: args['proxy-env'],
       idleTimeoutSeconds,
       upstreamTimeoutSeconds,
+      upstreamQueueConcurrency,
+      upstreamQueueMaxRetries,
+      upstreamQueueBaseDelaySeconds,
+      upstreamQueueMaxDelaySeconds,
       gheDomain: args['ghe-domain'],
     })
   },

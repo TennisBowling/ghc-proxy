@@ -13,6 +13,7 @@ Architecture and design documentation for ghc-proxy.
 | [Model Routing](model-routing.md) | Model resolution, capability detection, execution path selection, and small-model routing |
 | [Streaming](streaming.md) | SSE streaming architecture, per-path translation, and error recovery |
 | [Error Handling](error-handling.md) | Error classification, validation, translation policy, and error flow |
+| [Upstream Request Queue](upstream-request-queue.md) | Global Copilot back-pressure, 429 retry, and stream-aware queue slot ownership |
 | [State and Configuration](state-and-config.md) | Global state management, config file, CLI flags, and startup sequence |
 | [Migration: Hono → Elysia](migration-hono-to-elysia.md) | Completed framework migration from Hono to Elysia |
 

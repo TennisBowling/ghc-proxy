@@ -72,6 +72,43 @@ function isStructuredErrorPayload(
     && value.error !== null
 }
 
+function upstreamErrorType(status: number): string {
+  return status === 429 ? 'rate_limit_error' : 'upstream_error'
+}
+
+function createFallbackUpstreamError(
+  message: string,
+  response: Response,
+  rawText: string,
+): HTTPErrorBody {
+  const upstreamMessage = rawText.trim()
+  return {
+    error: {
+      message: upstreamMessage || message,
+      type: upstreamErrorType(response.status),
+    },
+  }
+}
+
+function getDiagnosticHeaders(response: Response): Record<string, string> | undefined {
+  const headerNames = [
+    'retry-after',
+    'x-ratelimit-limit',
+    'x-ratelimit-remaining',
+    'x-ratelimit-reset',
+    'x-github-request-id',
+    'x-request-id',
+  ]
+  const headers: Record<string, string> = {}
+  for (const name of headerNames) {
+    const value = response.headers.get(name)
+    if (value) {
+      headers[name] = value
+    }
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined
+}
+
 /**
  * Read an upstream Response body and throw an HTTPError with structured payload.
  * Used by CopilotClient when upstream returns a non-OK response.
@@ -84,10 +121,10 @@ export async function throwUpstreamError(message: string, response: Response): P
     const json = JSON.parse(rawText)
     body = isStructuredErrorPayload(json)
       ? json as HTTPErrorBody
-      : { error: { message: rawText, type: 'upstream_error' } }
+      : createFallbackUpstreamError(message, response, rawText)
   }
   catch {
-    body = { error: { message, type: 'upstream_error' } }
+    body = createFallbackUpstreamError(message, response, rawText)
   }
   consola.error('Upstream error:', {
     status: response.status,
@@ -95,6 +132,7 @@ export async function throwUpstreamError(message: string, response: Response): P
     url: response.url,
     body,
     rawBody: rawText ? previewBody(rawText) : '<empty>',
+    headers: getDiagnosticHeaders(response),
   })
   throw new HTTPError(response.status, body)
 }

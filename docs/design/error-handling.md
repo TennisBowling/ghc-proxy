@@ -35,7 +35,9 @@ class HTTPError extends Error {
 }
 ```
 
-The upstream error helper (`throwUpstreamError`) extracts the response body and status code. If the upstream body is empty or non-JSON, the client gets the fallback proxy error message while logs still include upstream status metadata and a safe body preview.
+Before a Copilot HTTP 429 reaches this helper, `UpstreamRequestQueue` retries it with global back-pressure. See [Upstream Request Queue](upstream-request-queue.md).
+
+The upstream error helper (`throwUpstreamError`) extracts the response body and status code. Structured upstream error bodies are forwarded as-is. Plain-text upstream bodies are returned as the client-facing error message, with HTTP 429 classified as `rate_limit_error`. If the upstream body is empty, the client gets the fallback proxy error message while logs still include upstream status metadata and a safe body preview.
 
 ### Streaming Errors
 

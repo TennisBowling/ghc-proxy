@@ -1,4 +1,5 @@
 import type { ResponsesEmulatorState } from './responses-emulator-state'
+import type { UpstreamRequestQueueOptions } from './upstream-request-queue'
 import type { ClientConfig } from '~/clients'
 
 import type { ModelsResponse } from '~/types'
@@ -7,6 +8,7 @@ import consola from 'consola'
 import { CopilotClient, getVSCodeVersion } from '~/clients'
 import { buildGitHubUrls } from '~/lib/ghe-domain'
 import { responsesEmulatorState } from './responses-emulator-state'
+import { createDefaultUpstreamRequestQueue } from './upstream-request-queue'
 
 export interface AuthState {
   githubToken?: string
@@ -22,6 +24,10 @@ export interface RuntimeConfig {
   rateLimitWait: boolean
   showToken: boolean
   upstreamTimeoutSeconds?: number
+  upstreamQueueConcurrency?: number
+  upstreamQueueMaxRetries?: number
+  upstreamQueueBaseDelaySeconds?: number
+  upstreamQueueMaxDelaySeconds?: number
 }
 
 export interface CacheState {
@@ -55,6 +61,14 @@ export const state: AppState = {
   responsesEmulator: responsesEmulatorState,
 }
 
+const upstreamRequestQueue = createDefaultUpstreamRequestQueue()
+
+export function configureUpstreamRequestQueue(
+  options: Partial<UpstreamRequestQueueOptions>,
+): void {
+  upstreamRequestQueue.updateOptions(options)
+}
+
 export function getClientConfig(): ClientConfig {
   const { baseUrl, apiBaseUrl } = buildGitHubUrls(state.auth.gheDomain)
   return {
@@ -67,7 +81,9 @@ export function getClientConfig(): ClientConfig {
 }
 
 export function createCopilotClient(): CopilotClient {
-  return new CopilotClient(state.auth, getClientConfig())
+  return new CopilotClient(state.auth, getClientConfig(), {
+    requestQueue: upstreamRequestQueue,
+  })
 }
 
 export async function cacheModels(client?: CopilotClient): Promise<void> {

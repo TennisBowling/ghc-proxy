@@ -59,6 +59,10 @@ describe('config module', () => {
       modelFallback: {
         claudeOpus: 'gpt-4-opus',
       },
+      upstreamQueueConcurrency: 12,
+      upstreamQueueMaxRetries: 4,
+      upstreamQueueBaseDelaySeconds: 3,
+      upstreamQueueMaxDelaySeconds: 45,
     }
     await fs.writeFile(tempConfigPath, JSON.stringify(fullConfig))
     const config = await readConfig()
