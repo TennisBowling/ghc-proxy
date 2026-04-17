@@ -189,7 +189,7 @@ const anthropicThinkingSchema = z.union([
 ])
 
 const anthropicOutputConfigSchema = z.object({
-  effort: z.enum(['low', 'medium', 'high', 'max', 'xhigh']).optional(),
+  effort: z.enum(['low', 'medium', 'high', 'max', 'xhigh']).nullable().optional(),
 }).loose()
 
 const anthropicMessagesBasePayloadSchema = z.object({

@@ -105,7 +105,11 @@ function sanitizeOutputConfig(
   }
 
   const effort = payload.output_config.effort
-  if (!effort) {
+  if (effort == null) {
+    delete payload.output_config.effort
+    if (Object.keys(payload.output_config).length === 0) {
+      delete payload.output_config
+    }
     return
   }
 

@@ -2113,6 +2113,40 @@ describe('responses and routing', () => {
     expect(calls[0]?.payload.output_config).toEqual({ effort: 'max' })
   })
 
+  test('/v1/messages native path drops nullable output_config effort before upstream', async () => {
+    const app = createApp()
+    const calls: Array<CapturedMessagesCall> = []
+    state.cache.models = buildModelsResponse(buildModel('claude-opus-4.6-1m', { supported_endpoints: ['/v1/messages'] }))
+
+    CopilotClient.prototype.createMessages = mockMessages({
+      id: 'msg_1',
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'native' }],
+      model: 'claude-opus-4.6-1m',
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+      },
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-4.6-1m',
+        max_tokens: 256,
+        output_config: { effort: null },
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.output_config).toBeUndefined()
+  })
+
   test('/v1/messages native path clamps unsupported high-end output_config effort', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []

@@ -186,6 +186,17 @@ describe('Anthropic payload validation', () => {
     }
   })
 
+  test('accepts nullable output_config effort values', () => {
+    const payload = parseAnthropicMessagesPayload({
+      model: 'claude-haiku-4.5',
+      max_tokens: 16,
+      messages: [{ role: 'user', content: 'Hello!' }],
+      output_config: { effort: null },
+    })
+
+    expect(payload.output_config?.effort).toBeNull()
+  })
+
   test('tool_choice.tool requires a declared tool name', () => {
     expect(() =>
       parseAnthropicMessagesPayload({

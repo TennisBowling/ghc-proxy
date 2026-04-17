@@ -137,6 +137,13 @@ export function pickFirstMessagesModel(models: Array<Model>): Model | undefined 
   return models.find(m => m.supported_endpoints?.includes(MESSAGES_ENDPOINT))
 }
 
+export function pickFirstReasoningMessagesModel(models: Array<Model>): Model | undefined {
+  return models.find(model =>
+    model.supported_endpoints?.includes(MESSAGES_ENDPOINT)
+    && (model.capabilities.supports.reasoning_effort?.length ?? 0) > 0,
+  ) ?? pickFirstMessagesModel(models)
+}
+
 /**
  * Wrap an async main function with process.exit handling.
  */

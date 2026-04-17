@@ -16,7 +16,7 @@ import type { ProbeResult } from './lib/probe-harness'
 import process from 'node:process'
 import { state } from '~/lib/state'
 
-import { bootstrapProbe, pickFirstMessagesModel, probeMessagesEndpoint, runMain } from './lib/probe-harness'
+import { bootstrapProbe, pickFirstReasoningMessagesModel, probeMessagesEndpoint, runMain } from './lib/probe-harness'
 
 const jsonMode = Bun.argv.includes('--json')
 
@@ -38,6 +38,7 @@ function buildProbes(modelId: string): Array<{ name: string, body: Record<string
     { name: 'output_config.effort = high', body: { ...base, output_config: { effort: 'high' } } },
     { name: 'output_config.effort = low', body: { ...base, output_config: { effort: 'low' } } },
     { name: 'output_config.effort = max', body: { ...base, output_config: { effort: 'max' } } },
+    { name: 'output_config.effort = null', body: { ...base, output_config: { effort: null } } },
 
     // thinking + output_config combined
     { name: 'thinking:adaptive + output_config.effort=high', body: { ...base, thinking: { type: 'adaptive' }, output_config: { effort: 'high' } } },
@@ -69,7 +70,7 @@ runMain(async () => {
   await bootstrapProbe({ silent: jsonMode })
 
   const models = state.cache.models?.data ?? []
-  const model = pickFirstMessagesModel(models)
+  const model = pickFirstReasoningMessagesModel(models)
   if (!model) {
     process.stderr.write('No model with /v1/messages support found.\n')
     process.exit(1)

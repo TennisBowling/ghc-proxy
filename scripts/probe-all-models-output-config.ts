@@ -24,6 +24,7 @@ function baseBody(modelId: string) {
 const probes = [
   { label: 'baseline', build: (id: string) => baseBody(id) },
   { label: 'output_config.effort=high', build: (id: string) => ({ ...baseBody(id), output_config: { effort: 'high' } }) },
+  { label: 'output_config.effort=null', build: (id: string) => ({ ...baseBody(id), output_config: { effort: null } }) },
   { label: 'adaptive + output_config', build: (id: string) => ({ ...baseBody(id), thinking: { type: 'adaptive' }, output_config: { effort: 'high' } }) },
   { label: 'thinking:adaptive alone', build: (id: string) => ({ ...baseBody(id), thinking: { type: 'adaptive' } }) },
 ] as const
