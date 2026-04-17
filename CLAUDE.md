@@ -87,6 +87,14 @@ Messages route is more complex with multiple strategies in `strategies/` subdire
 | `src/core/conversation/` | Conversation state management |
 | `src/lib/` | Utilities (state, config, tokens, errors, model resolution, rate limiting, validation) |
 | `src/types/` | TypeScript type definitions |
+| `src/state/` | Decomposed state stores (AuthStore, ModelCache, ConfigStore, RateLimiter, EmulatorStore) |
+| `src/pipeline/` | Pipeline framework (StrategyContext, ModelTransformResult types) |
+| `src/ingest/` | Protocol registry with per-protocol parsers and validators |
+| `src/transform/` | Composable model transform chain (rewrite, beta-headers, policy steps) |
+| `src/dispatch/` | Strategy registry, strategy runner, error recovery, ResourceDispatcher |
+| `src/translate/` | Translator traits, registry, and shared mapping utilities |
+| `src/deliver/` | Response delivery (SSE, JSON, error formatting, shared utilities) |
+| `src/guard/` | Request guard (auth check, rate limiting) |
 
 ### Key Abstractions
 
@@ -94,6 +102,9 @@ Messages route is more complex with multiple strategies in `strategies/` subdire
 - **TranslationPolicy** (`src/translator/anthropic/translation-policy.ts`) — Tracks exact vs lossy vs unsupported behavior explicitly; validation rejects unsupported fields with 400 instead of silently dropping them
 - **ModelResolver** (`src/lib/model-resolver.ts`) — Maps model IDs (e.g. `claude-sonnet-4.6` -> actual Copilot model) with configurable fallbacks. Only applies to the chat completions strategy path; native Messages and Responses strategies pass model IDs through as-is
 - **Global State** (`src/lib/state.ts`) — Cached models list, VS Code version, request counters, config
+- **ModelTransformChain** (`src/transform/chain.ts`) — Composes rewrite, beta-header, and policy steps into a per-route transform chain. Eliminates inline model pipeline duplication across handlers.
+- **ProtocolRegistry** (`src/ingest/registry.ts`) — Registry of protocol-specific parsers and context extractors. Each protocol registers a parse + extractMeta handler.
+- **ConfigStore** (`src/state/config-store.ts`) — Typed config query interface replacing scattered `shouldUse*()` functions. Centralizes all feature flag queries.
 
 ## Code Conventions
 

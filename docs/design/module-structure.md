@@ -183,6 +183,28 @@ ConversationRequest
 | `github.ts`     | GitHub API types (auth, user)                        |
 | `responses.ts`  | OpenAI Responses API types                           |
 
+## New Pipeline Layers
+
+### Pipeline-Stage Directories (added in architecture redesign)
+
+```text
+src/
+├── state/           # Decomposed state stores (replaced global AppState)
+├── pipeline/        # Pipeline framework types (StrategyContext, ModelTransformResult)
+├── ingest/          # Protocol registry (parse + validate per protocol)
+├── transform/       # Composable model transform chain
+├── dispatch/        # Strategy registry + ResourceDispatcher
+├── translate/       # Translator traits, registry, shared mapping tables
+├── deliver/         # Response delivery + error utilities
+└── guard/           # Request auth + rate limiting guard
+```
+
+These layers co-exist with the original `src/lib/` and `src/routes/` structure. The new layers provide:
+
+- **Composable alternatives to inline handler logic** — logic that was previously duplicated across route handlers is extracted into named, testable pipeline steps.
+- **Registries instead of hardcoded switch/if-else** — `src/ingest/` and `src/dispatch/` use registry patterns so new protocols and strategies can be added without touching existing handler code.
+- **Decomposed state instead of the global AppState object** — `src/state/` splits the monolithic `AppState` into focused stores (`AuthStore`, `ModelCache`, `ConfigStore`, `RateLimiter`, `EmulatorStore`), each with a single responsibility and a typed query interface.
+
 ## Test Coverage Layout
 
 - `tests/api-smoke.test.ts` covers public API compatibility.
