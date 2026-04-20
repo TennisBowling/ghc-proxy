@@ -1,4 +1,9 @@
+import type { Model } from '~/types'
+
 import consola from 'consola'
+
+import { modelCache } from '~/state'
+import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 
 export interface HTTPErrorBody {
   error: {
@@ -15,10 +20,6 @@ export interface HTTPErrorBody {
   }
 }
 
-/**
- * Elysia-native error class with `status` property and `toResponse()`.
- * Elysia auto-handles this via `toResponse()` when thrown in route handlers.
- */
 export class HTTPError extends Error {
   readonly status: number
   readonly body: HTTPErrorBody
@@ -54,6 +55,26 @@ export function fromTranslationFailure(failure: { message: string, status: numbe
   return new HTTPError(failure.status, {
     error: { message: failure.message, type: 'translation_error' },
   })
+}
+
+export function resolveModelOrThrow(modelId: string): Model {
+  const model = modelCache.findById(modelId)
+  if (!model) {
+    throwInvalidRequestError('The selected model could not be resolved.', 'model')
+  }
+  return model
+}
+
+export function withTranslationErrors<T>(fn: () => T): T {
+  try {
+    return fn()
+  }
+  catch (error) {
+    if (error instanceof TranslationFailure) {
+      throw fromTranslationFailure(error)
+    }
+    throw error
+  }
 }
 
 function previewBody(text: string, maxLength = 500): string {
@@ -109,10 +130,6 @@ function getDiagnosticHeaders(response: Response): Record<string, string> | unde
   return Object.keys(headers).length > 0 ? headers : undefined
 }
 
-/**
- * Read an upstream Response body and throw an HTTPError with structured payload.
- * Used by CopilotClient when upstream returns a non-OK response.
- */
 export async function throwUpstreamError(message: string, response: Response): Promise<never> {
   let rawText = ''
   let body: HTTPErrorBody

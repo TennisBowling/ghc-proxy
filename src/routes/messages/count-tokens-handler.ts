@@ -2,7 +2,7 @@ import consola from 'consola'
 
 import { inferModelFamily } from '~/core/capi/profile'
 import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
-import { resolveModelOrThrow, withTranslationErrors } from '~/deliver/error'
+import { resolveModelOrThrow, withTranslationErrors } from '~/lib/error'
 import { getTokenCount } from '~/lib/tokenizer'
 import { parseAnthropicCountTokensPayload } from '~/lib/validation'
 
