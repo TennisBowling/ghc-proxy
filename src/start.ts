@@ -262,7 +262,7 @@ export const start = defineCommand({
     },
     'upstream-queue-concurrency': {
       type: 'string',
-      description: 'Maximum concurrent Copilot upstream requests (default: 1)',
+      description: 'Maximum concurrent Copilot upstream requests (default: 10)',
     },
     'upstream-queue-retries': {
       type: 'string',

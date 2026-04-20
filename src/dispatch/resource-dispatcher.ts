@@ -1,7 +1,7 @@
 import type { CapiRequestContext } from '~/core/capi/types'
 import type { ResponseInputItemsListParams, ResponseRetrieveParams, ResponsesInputTokensPayload } from '~/types'
 
-import { throwInvalidRequestError } from '~/lib/error'
+import { resolveModelOrThrow } from '~/deliver/error'
 import { createCopilotClient } from '~/lib/state'
 import {
   deleteStoredResponseOrThrow,
@@ -9,8 +9,7 @@ import {
   getStoredResponseOrThrow,
   listStoredInputItemsOrThrow,
 } from '~/routes/responses/emulator'
-
-import { configStore, modelCache } from '~/state'
+import { configStore } from '~/state'
 
 export interface ResourceRequestOptions {
   signal?: AbortSignal
@@ -34,20 +33,8 @@ class EmulatorResourceDispatcher implements ResourceDispatcher {
   }
 
   async createInputTokens(payload: ResponsesInputTokensPayload): Promise<unknown> {
-    const model = payload.model
-    if (!model) {
-      throwInvalidRequestError(
-        'The selected model could not be resolved.',
-        'model',
-      )
-    }
-    const selectedModel = modelCache.findById(model)
-    if (!selectedModel) {
-      throwInvalidRequestError(
-        'The selected model could not be resolved.',
-        'model',
-      )
-    }
+    const model = payload.model ?? ''
+    const selectedModel = resolveModelOrThrow(model)
     return estimateEmulatorInputTokens(payload, selectedModel)
   }
 

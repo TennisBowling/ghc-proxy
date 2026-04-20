@@ -1,6 +1,6 @@
 import type { Model } from '~/types'
 
-import { fromTranslationFailure, HTTPError, throwInvalidRequestError } from '~/lib/error'
+import { fromTranslationFailure, throwInvalidRequestError } from '~/lib/error'
 import { modelCache } from '~/state'
 import { TranslationFailure } from '~/translator/anthropic/translation-issue'
 
@@ -30,21 +30,4 @@ export function withTranslationErrors<T>(fn: () => T): T {
     }
     throw error
   }
-}
-
-/**
- * Converts any error into a Response.
- * Handles HTTPError, TranslationFailure, and generic errors (500).
- */
-export function formatErrorResponse(error: unknown): Response {
-  if (error instanceof HTTPError) {
-    return error.toResponse()
-  }
-  if (error instanceof TranslationFailure) {
-    return fromTranslationFailure(error).toResponse()
-  }
-  return Response.json(
-    { error: { message: 'Internal server error', type: 'server_error' } },
-    { status: 500 },
-  )
 }
