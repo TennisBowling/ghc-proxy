@@ -19,7 +19,8 @@ import type { Model } from '~/types'
 import process from 'node:process'
 import { copilotBaseUrl, copilotHeaders } from '~/lib/api-config'
 import { MESSAGES_ENDPOINT, RESPONSES_ENDPOINT } from '~/lib/model-capabilities'
-import { getClientConfig, state } from '~/lib/state'
+import { getClientConfig } from '~/lib/state'
+import { authStore, modelCache } from '~/state'
 
 import { bootstrapProbe, extractErrorMessage, runMain, tryParseJson } from './lib/probe-harness'
 
@@ -264,7 +265,7 @@ async function runProbes(
       process.stdout.write(`\nProbing ${endpoint} × ${model.id} ...`)
 
     for (const tc of toolCases) {
-      const headers = copilotHeaders(state.auth, getClientConfig(), { initiator: 'agent' })
+      const headers = copilotHeaders(authStore, getClientConfig(), { initiator: 'agent' })
       const result = await probeCase(baseUrl, headers, endpoint, buildBody(model.id, tc.tools))
       modelMap.set(tc.name, result)
     }
@@ -305,7 +306,7 @@ function mapToSortedRecord(
 async function main() {
   await bootstrapProbe({ timeoutMs: REQUEST_TIMEOUT_MS })
 
-  const allModels = state.cache.models?.data ?? []
+  const allModels = modelCache.getModels()?.data ?? []
   const { messages: messagesModels, responses: responsesModels } = selectModels(allModels)
   const clientConfig = getClientConfig()
   const baseUrl = copilotBaseUrl(clientConfig)

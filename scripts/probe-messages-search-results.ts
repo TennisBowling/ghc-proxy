@@ -19,7 +19,7 @@ import type { Model } from '~/types'
 
 import process from 'node:process'
 import { MESSAGES_ENDPOINT } from '~/lib/model-capabilities'
-import { state } from '~/lib/state'
+import { modelCache } from '~/state'
 
 import { bootstrapProbe, probeMessagesEndpoint, runMain } from './lib/probe-harness'
 
@@ -188,7 +188,7 @@ function selectModel(models: Array<Model>): Model | undefined {
 runMain(async () => {
   await bootstrapProbe({ silent: jsonMode })
 
-  const model = selectModel(state.cache.models?.data ?? [])
+  const model = selectModel(modelCache.getModels()?.data ?? [])
   if (!model) {
     process.stderr.write(`No native /v1/messages model found${requestedModelId ? ` matching ${requestedModelId}` : ''}.\n`)
     process.exit(1)

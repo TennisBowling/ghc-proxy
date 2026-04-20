@@ -8,7 +8,7 @@
  */
 
 import process from 'node:process'
-import { state } from '~/lib/state'
+import { modelCache } from '~/state'
 
 import { bootstrapProbe, pickMessagesModels, probeMessagesEndpoint, runMain } from './lib/probe-harness'
 
@@ -32,7 +32,7 @@ const probes = [
 runMain(async () => {
   await bootstrapProbe()
 
-  const models = state.cache.models?.data ?? []
+  const models = modelCache.getModels()?.data ?? []
   const messagesModels = pickMessagesModels(models)
 
   process.stdout.write(`\n=== Probing output_config acceptance across ALL /v1/messages models ===\n\n`)

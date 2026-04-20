@@ -2,8 +2,8 @@ import type { Model } from '~/types'
 
 import { colorize } from 'consola/utils'
 
+import { authStore, modelCache } from '~/state'
 import { getModelFallbackConfig } from './model-resolver'
-import { state } from './state'
 import { VERSION } from './version'
 
 export function printStartupBanner(serverUrl: string): void {
@@ -17,15 +17,16 @@ export function printStartupBanner(serverUrl: string): void {
   const info = (label: string, value: string) =>
     `  ${colorize('dim', label.padEnd(11))}${value}`
 
-  if (state.cache.vsCodeVersion)
-    lines.push(info('VSCode', state.cache.vsCodeVersion))
-  if (state.cache.githubLogin)
-    lines.push(info('Account', state.cache.githubLogin))
-  if (state.auth.copilotApiBase)
-    lines.push(info('Endpoint', state.auth.copilotApiBase))
+  const vsCodeVersion = modelCache.getVSCodeVersion()
+  if (vsCodeVersion)
+    lines.push(info('VSCode', vsCodeVersion))
+  if (authStore.githubLogin)
+    lines.push(info('Account', authStore.githubLogin))
+  if (authStore.copilotApiBase)
+    lines.push(info('Endpoint', authStore.copilotApiBase))
 
   // Models section
-  const models = state.cache.models?.data ?? []
+  const models = modelCache.getModels()?.data ?? []
   if (models.length > 0) {
     lines.push('')
     lines.push(`  ${colorize('bold', 'Models')}`)

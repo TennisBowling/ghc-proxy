@@ -54,7 +54,7 @@ await mock.module('../src/clients/github-client', () => ({
 
 const { GitHubClient } = await import('../src/clients/github-client')
 const { refreshCopilotToken } = await import('../src/lib/token')
-const { state } = await import('../src/lib/state')
+const { authStore, modelCache } = await import('../src/state')
 
 describe('refreshCopilotToken', () => {
   beforeEach(() => {
@@ -65,18 +65,23 @@ describe('refreshCopilotToken', () => {
     mockConsola.error.mockClear()
     mockConsola.info.mockClear()
 
-    state.auth = {}
-    state.cache = {}
-    state.config = {
-      accountType: 'individual',
-      manualApprove: false,
-      rateLimitWait: false,
-      showToken: false,
-    }
+    authStore.githubToken = undefined
+    authStore.copilotToken = undefined
+    authStore.copilotApiBase = undefined
+    authStore.gheDomain = undefined
+    authStore.githubLogin = undefined
+    authStore.accountType = 'individual'
+    authStore.manualApprove = false
+    authStore.rateLimitWait = false
+    authStore.showToken = false
+    authStore.rateLimitSeconds = undefined
+    authStore.upstreamTimeoutSeconds = undefined
+    modelCache.clearModels()
+    modelCache.clearVSCodeVersion()
   })
 
   function createClient() {
-    return new GitHubClient(state.auth, { accountType: 'individual' })
+    return new GitHubClient(authStore, { accountType: 'individual' })
   }
 
   test('successful refresh updates state', async () => {
@@ -86,7 +91,7 @@ describe('refreshCopilotToken', () => {
 
     await refreshCopilotToken(createClient())
 
-    expect(state.auth.copilotToken).toBe('refreshed-token')
+    expect(authStore.copilotToken).toBe('refreshed-token')
     expect(getCopilotTokenMock).toHaveBeenCalledTimes(1)
     expect(sleepMock).not.toHaveBeenCalled()
   })
@@ -103,7 +108,7 @@ describe('refreshCopilotToken', () => {
 
     await refreshCopilotToken(createClient())
 
-    expect(state.auth.copilotToken).toBe('recovered-token')
+    expect(authStore.copilotToken).toBe('recovered-token')
     expect(getCopilotTokenMock).toHaveBeenCalledTimes(3)
     expect(sleepMock).toHaveBeenCalledTimes(2)
     expect(mockConsola.warn).toHaveBeenCalledTimes(2)
@@ -149,7 +154,7 @@ describe('refreshCopilotToken', () => {
 
     await refreshCopilotToken(createClient())
 
-    expect(state.auth.copilotToken).toBe('recovered-after-502')
+    expect(authStore.copilotToken).toBe('recovered-after-502')
     expect(getCopilotTokenMock).toHaveBeenCalledTimes(3)
     expect(sleepMock).toHaveBeenCalledTimes(2)
   })

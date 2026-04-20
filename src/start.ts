@@ -4,13 +4,14 @@ import type { RuntimeConfig } from './lib/state'
 import { defineCommand } from 'citty'
 import consola from 'consola'
 
+import { authStore, modelCache } from '~/state'
 import { getCachedConfig, readConfig } from './lib/config'
 import { normalizeGheDomain } from './lib/ghe-domain'
 import { ensurePaths } from './lib/paths'
 import { initProxyFromEnv } from './lib/proxy'
 import { generateEnvScript } from './lib/shell'
 import { printStartupBanner } from './lib/startup-banner'
-import { cacheModels, cacheVSCodeVersion, configureUpstreamRequestQueue, createCopilotClient, state } from './lib/state'
+import { cacheModels, cacheVSCodeVersion, configureUpstreamRequestQueue, createCopilotClient } from './lib/state'
 import { setupCopilotToken, setupGitHubToken } from './lib/token'
 import { createServer } from './server'
 
@@ -35,15 +36,16 @@ interface RunServerOptions {
 }
 
 async function maybeCopyClaudeCodeCommand(serverUrl: string): Promise<void> {
-  if (!state.cache.models) {
+  const models = modelCache.getModels()
+  if (!models) {
     return
   }
 
-  const selectableModels = state.cache.models.data.filter(
+  const selectableModels = models.data.filter(
     model => model.model_picker_enabled,
   )
   const modelOptions
-    = selectableModels.length > 0 ? selectableModels : state.cache.models.data
+    = selectableModels.length > 0 ? selectableModels : models.data
 
   const selectedModel = await consola.prompt(
     'Select a model to use with Claude Code',
@@ -101,21 +103,21 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     consola.info('Verbose logging enabled')
   }
 
-  state.config.accountType = accountType
+  authStore.accountType = accountType
   if (accountType !== 'individual') {
     consola.info(`Using ${accountType} plan GitHub account`)
   }
 
   if (options.githubToken) {
-    state.auth.githubToken = options.githubToken
+    authStore.githubToken = options.githubToken
     consola.info('Using provided GitHub token')
   }
 
-  state.config.manualApprove = options.manual
-  state.config.rateLimitSeconds = options.rateLimit
-  state.config.rateLimitWait = options.rateLimitWait
-  state.config.showToken = options.showToken
-  state.config.upstreamTimeoutSeconds = options.upstreamTimeoutSeconds
+  authStore.manualApprove = options.manual
+  authStore.rateLimitSeconds = options.rateLimit
+  authStore.rateLimitWait = options.rateLimitWait
+  authStore.showToken = options.showToken
+  authStore.upstreamTimeoutSeconds = options.upstreamTimeoutSeconds
 
   await ensurePaths()
   await readConfig()
@@ -126,10 +128,6 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   const upstreamQueueBaseDelaySeconds = options.upstreamQueueBaseDelaySeconds ?? cachedConfig.upstreamQueueBaseDelaySeconds
   const upstreamQueueMaxDelaySeconds = options.upstreamQueueMaxDelaySeconds ?? cachedConfig.upstreamQueueMaxDelaySeconds
 
-  state.config.upstreamQueueConcurrency = upstreamQueueConcurrency
-  state.config.upstreamQueueMaxRetries = upstreamQueueMaxRetries
-  state.config.upstreamQueueBaseDelaySeconds = upstreamQueueBaseDelaySeconds
-  state.config.upstreamQueueMaxDelaySeconds = upstreamQueueMaxDelaySeconds
   configureUpstreamRequestQueue({
     concurrency: upstreamQueueConcurrency,
     maxRetries: upstreamQueueMaxRetries,
@@ -139,12 +137,12 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   // Load persisted GHE domain from config, then override with CLI arg if provided.
   // Pass --ghe-domain "" (empty string) to explicitly clear a persisted domain.
-  state.auth.gheDomain = cachedConfig.gheDomain
+  authStore.gheDomain = cachedConfig.gheDomain
   if (options.gheDomain !== undefined) {
-    state.auth.gheDomain = options.gheDomain ? normalizeGheDomain(options.gheDomain) : undefined
+    authStore.gheDomain = options.gheDomain ? normalizeGheDomain(options.gheDomain) : undefined
   }
-  if (state.auth.gheDomain && state.config.accountType === 'individual') {
-    state.config.accountType = 'enterprise'
+  if (authStore.gheDomain && authStore.accountType === 'individual') {
+    authStore.accountType = 'enterprise'
   }
 
   await cacheVSCodeVersion()
@@ -161,7 +159,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   const serverUrl = `http://localhost:${options.port}`
 
   if (options.claudeCode) {
-    if (!state.cache.models) {
+    if (!modelCache.getModels()) {
       throw new Error('Models should be loaded by now')
     }
     await maybeCopyClaudeCodeCommand(serverUrl)

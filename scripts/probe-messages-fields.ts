@@ -14,7 +14,7 @@
 import type { ProbeResult } from './lib/probe-harness'
 
 import process from 'node:process'
-import { state } from '~/lib/state'
+import { modelCache } from '~/state'
 
 import { bootstrapProbe, pickFirstReasoningMessagesModel, probeMessagesEndpoint, runMain } from './lib/probe-harness'
 
@@ -69,7 +69,7 @@ function buildProbes(modelId: string): Array<{ name: string, body: Record<string
 runMain(async () => {
   await bootstrapProbe({ silent: jsonMode })
 
-  const models = state.cache.models?.data ?? []
+  const models = modelCache.getModels()?.data ?? []
   const model = pickFirstReasoningMessagesModel(models)
   if (!model) {
     process.stderr.write('No model with /v1/messages support found.\n')

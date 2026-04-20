@@ -3,11 +3,12 @@ import type { GetCopilotTokenResponse } from '~/types'
 import consola from 'consola'
 
 import { GitHubClient } from '~/clients'
+import { authStore, modelCache } from '~/state'
 
 import { getCachedConfig, writeConfigField } from './config'
 import { HTTPError } from './error'
 import { formatErrorMessage, retryWithBackoff } from './retry'
-import { cacheVSCodeVersion, getClientConfig, state } from './state'
+import { cacheVSCodeVersion, getClientConfig } from './state'
 
 const TRAILING_SLASHES_RE = /\/+$/
 
@@ -22,7 +23,7 @@ export async function setupCopilotToken() {
   applyCopilotTokenState(response)
 
   consola.debug('GitHub Copilot Token fetched successfully!')
-  if (state.config.showToken) {
+  if (authStore.showToken) {
     consola.info('Copilot token:', response.token)
   }
 
@@ -54,7 +55,7 @@ export async function refreshCopilotToken(githubClient: GitHubClient): Promise<v
     )
     applyCopilotTokenState(refreshed)
     consola.debug('Copilot token refreshed')
-    if (state.config.showToken) {
+    if (authStore.showToken) {
       consola.info('Refreshed Copilot token:', refreshed.token)
     }
   }
@@ -92,8 +93,8 @@ export async function setupGitHubToken(
     }
 
     if (githubToken && !options?.force) {
-      state.auth.githubToken = githubToken
-      if (state.config.showToken) {
+      authStore.githubToken = githubToken
+      if (authStore.showToken) {
         consola.info('GitHub token:', githubToken)
       }
       try {
@@ -123,13 +124,13 @@ export async function setupGitHubToken(
 
     const token = await githubClient.pollAccessToken(response)
     await writeGithubToken(token)
-    state.auth.githubToken = token
+    authStore.githubToken = token
 
     // Persist the current GHE domain so future runs can detect domain changes.
     // Writing undefined removes the field from config (clears a previously-persisted domain).
-    await writeConfigField('gheDomain', state.auth.gheDomain)
+    await writeConfigField('gheDomain', authStore.gheDomain)
 
-    if (state.config.showToken) {
+    if (authStore.showToken) {
       consola.info('GitHub token:', token)
     }
     await logUser()
@@ -159,17 +160,17 @@ function isTransientHttpError(error: HTTPError): boolean {
 async function logUser() {
   const githubClient = createGitHubClient()
   const user = await githubClient.getGitHubUser()
-  state.cache.githubLogin = user.login
+  authStore.githubLogin = user.login
   consola.debug(`Logged in as ${user.login}`)
 }
 
 function createGitHubClient() {
-  return new GitHubClient(state.auth, getClientConfig())
+  return new GitHubClient(authStore, getClientConfig())
 }
 
 function applyCopilotTokenState(response: GetCopilotTokenResponse) {
-  state.auth.copilotToken = response.token
-  state.auth.copilotApiBase = normalizeCopilotApiBase(response.endpoints?.api)
+  authStore.copilotToken = response.token
+  authStore.copilotApiBase = normalizeCopilotApiBase(response.endpoints?.api)
 }
 
 function normalizeCopilotApiBase(value?: string): string | undefined {
@@ -184,13 +185,13 @@ function normalizeCopilotApiBase(value?: string): string | undefined {
  * Both `undefined` means "public github.com" → no change → returns false.
  */
 function isDomainChanged(): boolean {
-  const currentDomain = state.auth.gheDomain
+  const currentDomain = authStore.gheDomain
   const persistedDomain = getCachedConfig().gheDomain
   return currentDomain !== persistedDomain
 }
 
 async function ensureVSCodeVersion() {
-  if (!state.cache.vsCodeVersion) {
+  if (!modelCache.getVSCodeVersion()) {
     await cacheVSCodeVersion()
   }
 }

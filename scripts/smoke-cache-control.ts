@@ -3,8 +3,8 @@
 import type { Model } from '~/types'
 
 import process from 'node:process'
-import { state } from '~/lib/state'
 import { createServer } from '~/server'
+import { modelCache } from '~/state'
 import { bootstrapProbe, pickFirstMessagesModel, probeMessagesEndpoint, runMain } from './lib/probe-harness'
 
 const PORT = 14141
@@ -630,7 +630,7 @@ async function sendRequest(body: Record<string, unknown>): Promise<RequestResult
 }
 
 async function testModel(modelId: string, provider: Provider): Promise<ModelResult> {
-  const models = state.cache.models?.data ?? []
+  const models = modelCache.getModels()?.data ?? []
   const model = models.find(m => m.id === modelId)
 
   if (!model) {
@@ -844,7 +844,7 @@ async function main() {
  * rejects scope, or 'skipped' if no suitable model is available.
  */
 async function probeScopeSupport(): Promise<'supported' | 'rejected' | 'skipped'> {
-  const models = state.cache.models?.data ?? []
+  const models = modelCache.getModels()?.data ?? []
   const model = pickFirstMessagesModel(models)
   if (!model)
     return 'skipped'

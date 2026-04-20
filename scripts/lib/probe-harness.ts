@@ -11,8 +11,9 @@ import { copilotBaseUrl, copilotHeaders } from '~/lib/api-config'
 import { readConfig } from '~/lib/config'
 import { MESSAGES_ENDPOINT } from '~/lib/model-capabilities'
 import { ensurePaths } from '~/lib/paths'
-import { cacheModels, cacheVSCodeVersion, getClientConfig, state } from '~/lib/state'
+import { cacheModels, cacheVSCodeVersion, getClientConfig } from '~/lib/state'
 import { setupCopilotToken, setupGitHubToken } from '~/lib/token'
+import { authStore } from '~/state'
 
 export const REQUEST_TIMEOUT_MS = 30_000
 
@@ -31,11 +32,11 @@ export interface ProbeResult {
  */
 export async function bootstrapProbe(options?: { silent?: boolean, timeoutMs?: number }): Promise<void> {
   consola.level = options?.silent ? Number.NEGATIVE_INFINITY : 0
-  state.config.accountType = 'enterprise'
-  state.config.manualApprove = false
-  state.config.rateLimitWait = false
-  state.config.showToken = false
-  state.config.upstreamTimeoutSeconds = Math.floor((options?.timeoutMs ?? REQUEST_TIMEOUT_MS) / 1000)
+  authStore.accountType = 'enterprise'
+  authStore.manualApprove = false
+  authStore.rateLimitWait = false
+  authStore.showToken = false
+  authStore.upstreamTimeoutSeconds = Math.floor((options?.timeoutMs ?? REQUEST_TIMEOUT_MS) / 1000)
 
   await ensurePaths()
   await readConfig()
@@ -64,7 +65,7 @@ export async function probeMessagesEndpoint(
   try {
     const clientConfig = getClientConfig()
     const url = `${copilotBaseUrl(clientConfig)}${MESSAGES_ENDPOINT}`
-    const headers = copilotHeaders(state.auth, clientConfig, { initiator: 'agent' })
+    const headers = copilotHeaders(authStore, clientConfig, { initiator: 'agent' })
 
     const response = await fetch(url, {
       method: 'POST',

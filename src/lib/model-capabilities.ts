@@ -1,6 +1,6 @@
 import type { Model } from '~/types'
 
-import { state } from './state'
+import { modelCache } from '~/state'
 
 export const RESPONSES_ENDPOINT = '/responses' as const
 export const MESSAGES_ENDPOINT = '/v1/messages' as const
@@ -8,7 +8,7 @@ export const MESSAGES_ENDPOINT = '/v1/messages' as const
 export function findModelById(
   modelId: string,
 ): Model | undefined {
-  return state.cache.models?.data.find(model => model.id === modelId)
+  return modelCache.findById(modelId)
 }
 
 export function modelSupportsEndpoint(

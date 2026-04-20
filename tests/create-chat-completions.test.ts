@@ -2,13 +2,14 @@ import type { ChatCompletionsPayload } from '~/types'
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { authStore, modelCache } from '~/state'
 import { CopilotClient } from '../src/clients/copilot-client'
-import { getClientConfig, state } from '../src/lib/state'
+import { getClientConfig } from '../src/lib/state'
 
 // Mock state
-state.auth.copilotToken = 'test-token'
-state.cache.vsCodeVersion = '1.0.0'
-state.config.accountType = 'individual'
+authStore.copilotToken = 'test-token'
+modelCache.setVSCodeVersion('1.0.0')
+authStore.accountType = 'individual'
 
 // Helper to mock fetch
 const fetchMock = mock(
@@ -26,7 +27,7 @@ describe('createChatCompletions', () => {
   })
 
   afterEach(() => {
-    state.auth.copilotApiBase = undefined
+    authStore.copilotApiBase = undefined
   })
 
   test('sets X-Initiator to agent if tool/assistant present', async () => {
@@ -38,7 +39,7 @@ describe('createChatCompletions', () => {
       model: 'gpt-test',
     }
     const client = new CopilotClient(
-      state.auth,
+      authStore,
       getClientConfig(),
       { fetch: fetchMock as unknown as typeof fetch },
     )
@@ -59,7 +60,7 @@ describe('createChatCompletions', () => {
       model: 'gpt-test',
     }
     const client = new CopilotClient(
-      state.auth,
+      authStore,
       getClientConfig(),
       { fetch: fetchMock as unknown as typeof fetch },
     )
@@ -72,7 +73,7 @@ describe('createChatCompletions', () => {
   })
 
   test('prefers dynamic copilot api base from token state', async () => {
-    state.auth.copilotApiBase = 'https://api.enterprise.githubcopilot.com/'
+    authStore.copilotApiBase = 'https://api.enterprise.githubcopilot.com/'
 
     const payload: ChatCompletionsPayload = {
       messages: [{ role: 'user', content: 'hi' }],
@@ -80,7 +81,7 @@ describe('createChatCompletions', () => {
     }
 
     const client = new CopilotClient(
-      state.auth,
+      authStore,
       getClientConfig(),
       { fetch: fetchMock as unknown as typeof fetch },
     )

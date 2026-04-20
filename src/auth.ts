@@ -3,10 +3,11 @@
 import { defineCommand } from 'citty'
 import consola from 'consola'
 
+import { authStore } from '~/state'
 import { getCachedConfig, readConfig } from './lib/config'
 import { normalizeGheDomain } from './lib/ghe-domain'
 import { ensurePaths } from './lib/paths'
-import { cacheVSCodeVersion, state } from './lib/state'
+import { cacheVSCodeVersion } from './lib/state'
 import { setupGitHubToken } from './lib/token'
 
 interface RunAuthOptions {
@@ -21,19 +22,19 @@ export async function runAuth(options: RunAuthOptions): Promise<void> {
     consola.info('Verbose logging enabled')
   }
 
-  state.config.showToken = options.showToken
+  authStore.showToken = options.showToken
 
   await ensurePaths()
   await readConfig()
 
   // Load persisted GHE domain from config, then override with CLI arg if provided.
   // Pass --ghe-domain "" (empty string) to explicitly clear a persisted domain.
-  state.auth.gheDomain = getCachedConfig().gheDomain
+  authStore.gheDomain = getCachedConfig().gheDomain
   if (options.gheDomain !== undefined) {
-    state.auth.gheDomain = options.gheDomain ? normalizeGheDomain(options.gheDomain) : undefined
+    authStore.gheDomain = options.gheDomain ? normalizeGheDomain(options.gheDomain) : undefined
   }
-  if (state.auth.gheDomain && state.config.accountType === 'individual') {
-    state.config.accountType = 'enterprise'
+  if (authStore.gheDomain && authStore.accountType === 'individual') {
+    authStore.accountType = 'enterprise'
   }
 
   await cacheVSCodeVersion()

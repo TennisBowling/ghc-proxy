@@ -6,9 +6,10 @@ import consola from 'consola'
 
 import { GitHubClient } from '~/clients'
 
+import { authStore } from '~/state'
 import { getCachedConfig, readConfig } from './lib/config'
 import { ensurePaths } from './lib/paths'
-import { cacheVSCodeVersion, getClientConfig, state } from './lib/state'
+import { cacheVSCodeVersion, getClientConfig } from './lib/state'
 import { setupGitHubToken } from './lib/token'
 
 export const checkUsage = defineCommand({
@@ -19,11 +20,11 @@ export const checkUsage = defineCommand({
   async run() {
     await ensurePaths()
     await readConfig()
-    state.auth.gheDomain = getCachedConfig().gheDomain
+    authStore.gheDomain = getCachedConfig().gheDomain
     await cacheVSCodeVersion()
     await setupGitHubToken()
     try {
-      const githubClient = new GitHubClient(state.auth, getClientConfig())
+      const githubClient = new GitHubClient(authStore, getClientConfig())
       const usage = await githubClient.getCopilotUsage()
       const premium = usage.quota_snapshots.premium_interactions
       const premiumTotal = premium.entitlement

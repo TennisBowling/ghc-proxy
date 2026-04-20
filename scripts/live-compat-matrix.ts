@@ -4,8 +4,8 @@ import type { Model, ResponsesResult } from '~/types'
 
 import process from 'node:process'
 import consola from 'consola'
-import { state } from '~/lib/state'
 import { createServer } from '~/server'
+import { modelCache } from '~/state'
 
 import { bootstrapProbe, pickFirstMessagesModel, runMain } from './lib/probe-harness'
 
@@ -448,7 +448,7 @@ const responsesTranslationMessageCases: Array<RequestCase> = [
 async function main() {
   await bootstrap()
 
-  const models = state.cache.models?.data ?? []
+  const models = modelCache.getModels()?.data ?? []
   const selectedResponsesModels = resolveResponsesModels(models)
   const selectedResponsesTranslationModel = pickResponsesTranslationModel(models)
   const selectedMessagesModel = pickFirstMessagesModel(models)

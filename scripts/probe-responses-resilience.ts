@@ -24,7 +24,8 @@ import type { ResponsesResult } from '~/types'
 import process from 'node:process'
 import { copilotBaseUrl, copilotHeaders } from '~/lib/api-config'
 import { RESPONSES_ENDPOINT } from '~/lib/model-capabilities'
-import { getClientConfig, state } from '~/lib/state'
+import { getClientConfig } from '~/lib/state'
+import { authStore, modelCache } from '~/state'
 
 import { bootstrapProbe, extractErrorMessage, runMain, tryParseJson } from './lib/probe-harness'
 
@@ -362,7 +363,7 @@ async function obtainEncryptedContent(
 async function main() {
   await bootstrapProbe({ silent: jsonMode, timeoutMs: REQUEST_TIMEOUT_MS })
 
-  const allModels = state.cache.models?.data ?? []
+  const allModels = modelCache.getModels()?.data ?? []
   const responsesModels = allModels.filter(m => m.supported_endpoints?.includes(RESPONSES_ENDPOINT))
   const selectedModel = requestedModelId
     ? responsesModels.find(m => m.id === requestedModelId)
@@ -375,7 +376,7 @@ async function main() {
 
   const clientConfig = getClientConfig()
   const baseUrl = copilotBaseUrl(clientConfig)
-  const headers = copilotHeaders(state.auth, clientConfig, { initiator: 'agent' })
+  const headers = copilotHeaders(authStore, clientConfig, { initiator: 'agent' })
 
   if (!jsonMode) {
     process.stdout.write('╔══════════════════════════════════════════════════════════════╗\n')

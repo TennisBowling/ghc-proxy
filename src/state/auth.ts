@@ -3,6 +3,7 @@ export class AuthStore {
   copilotToken?: string
   copilotApiBase?: string
   gheDomain?: string
+  githubLogin?: string
   accountType: 'individual' | 'business' | 'enterprise' = 'individual'
   manualApprove = false
   rateLimitSeconds?: number

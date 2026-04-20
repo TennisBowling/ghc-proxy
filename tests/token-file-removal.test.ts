@@ -51,23 +51,31 @@ await mock.module('../src/clients/github-client', () => ({
 
 const { PATHS, ensurePaths } = await import('../src/lib/paths')
 const { setupGitHubToken } = await import('../src/lib/token')
-const { state } = await import('../src/lib/state')
+const { authStore, modelCache } = await import('../src/state')
 const { readConfig } = await import('../src/lib/config')
+
+function resetStores() {
+  authStore.githubToken = undefined
+  authStore.copilotToken = undefined
+  authStore.copilotApiBase = undefined
+  authStore.gheDomain = undefined
+  authStore.githubLogin = undefined
+  authStore.accountType = 'individual'
+  authStore.manualApprove = false
+  authStore.rateLimitWait = false
+  authStore.showToken = false
+  authStore.rateLimitSeconds = undefined
+  authStore.upstreamTimeoutSeconds = undefined
+  modelCache.clearModels()
+  modelCache.clearVSCodeVersion()
+}
 
 describe('Token file removal (RED phase)', () => {
   beforeEach(async () => {
     await fs.rm(tempDir, { recursive: true, force: true })
     await fs.mkdir(tempDir, { recursive: true })
 
-    state.auth = {}
-    state.cache = {}
-    state.config = {
-      accountType: 'individual',
-      manualApprove: false,
-      rateLimitWait: false,
-      showToken: false,
-    }
-
+    resetStores()
     mockPollAccessToken.mockClear()
   })
 
@@ -91,7 +99,7 @@ describe('Token file removal (RED phase)', () => {
 
     await setupGitHubToken()
 
-    expect(state.auth.githubToken).toBe('new-test-token')
+    expect(authStore.githubToken).toBe('new-test-token')
   })
 
   test('setupGitHubToken() should write to config.json only', async () => {
@@ -114,15 +122,7 @@ describe('GHE domain-switch re-auth', () => {
     await fs.rm(tempDir, { recursive: true, force: true })
     await fs.mkdir(tempDir, { recursive: true })
 
-    state.auth = {}
-    state.cache = {}
-    state.config = {
-      accountType: 'individual',
-      manualApprove: false,
-      rateLimitWait: false,
-      showToken: false,
-    }
-
+    resetStores()
     mockPollAccessToken.mockClear()
   })
 
@@ -135,13 +135,13 @@ describe('GHE domain-switch re-auth', () => {
     await readConfig()
 
     // Now the user configures a GHE domain (different from persisted undefined)
-    state.auth.gheDomain = 'corp.ghe.com'
+    authStore.gheDomain = 'corp.ghe.com'
 
     await setupGitHubToken()
 
     // The old token must NOT be reused — device flow should have been triggered
     expect(mockPollAccessToken).toHaveBeenCalledTimes(1)
-    expect(state.auth.githubToken).toBe('new-test-token')
+    expect(authStore.githubToken).toBe('new-test-token')
 
     // The new GHE domain should be persisted in config
     const configContent = await fs.readFile(PATHS.CONFIG_PATH, 'utf8')
@@ -162,13 +162,13 @@ describe('GHE domain-switch re-auth', () => {
     await readConfig()
 
     // Runtime domain matches the persisted one
-    state.auth.gheDomain = 'corp.ghe.com'
+    authStore.gheDomain = 'corp.ghe.com'
 
     await setupGitHubToken()
 
     // Cached token should be reused — no device flow triggered
     expect(mockPollAccessToken).not.toHaveBeenCalled()
-    expect(state.auth.githubToken).toBe('existing-ghe-token')
+    expect(authStore.githubToken).toBe('existing-ghe-token')
   })
 
   test('both undefined (public github.com) → cached token reused', async () => {
@@ -179,13 +179,13 @@ describe('GHE domain-switch re-auth', () => {
     )
     await readConfig()
 
-    // state.auth.gheDomain is undefined by default (no GHE)
+    // authStore.gheDomain is undefined by default (no GHE)
 
     await setupGitHubToken()
 
     // Cached token should be reused
     expect(mockPollAccessToken).not.toHaveBeenCalled()
-    expect(state.auth.githubToken).toBe('public-github-token')
+    expect(authStore.githubToken).toBe('public-github-token')
   })
 
   test('switching from GHE back to public → re-auth forced', async () => {
@@ -200,12 +200,12 @@ describe('GHE domain-switch re-auth', () => {
     await readConfig()
 
     // Now runtime has no GHE domain (public github.com)
-    state.auth.gheDomain = undefined
+    authStore.gheDomain = undefined
 
     await setupGitHubToken()
 
     // Domain changed (GHE → public) — must force re-auth
     expect(mockPollAccessToken).toHaveBeenCalledTimes(1)
-    expect(state.auth.githubToken).toBe('new-test-token')
+    expect(authStore.githubToken).toBe('new-test-token')
   })
 })
