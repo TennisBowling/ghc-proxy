@@ -1,6 +1,9 @@
+import type { ReasoningEffort } from '~/lib/config'
+
 import {
   DEFAULT_COMPACT_USE_SMALL_MODEL,
   DEFAULT_CONTEXT_UPGRADE_TOKEN_THRESHOLD,
+  DEFAULT_REASONING_EFFORT,
   DEFAULT_RESPONSES_API_AUTO_COMPACT_INPUT,
   DEFAULT_RESPONSES_API_AUTO_CONTEXT_MANAGEMENT,
   DEFAULT_RESPONSES_OFFICIAL_EMULATOR,
@@ -8,10 +11,6 @@ import {
   DEFAULT_USE_FUNCTION_APPLY_PATCH,
   getCachedConfig,
 } from '~/lib/config'
-
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
-
-const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'high'
 
 export class ConfigStore {
   isEmulatorEnabled(): boolean {

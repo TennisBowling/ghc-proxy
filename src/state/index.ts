@@ -1,7 +1,7 @@
 export { authStore } from './auth'
 export type { AuthStore } from './auth'
 export { configStore } from './config-store'
-export type { ConfigStore, ReasoningEffort } from './config-store'
+export type { ConfigStore } from './config-store'
 export { responsesEmulatorState } from './emulator-store'
 export type { ResponsesEmulatorState } from './emulator-store'
 export { MESSAGES_ENDPOINT, modelCache, RESPONSES_ENDPOINT } from './model-cache'

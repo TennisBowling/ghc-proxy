@@ -7,8 +7,9 @@ import { modelCache } from '~/state'
  * and capability detection. Used by both messages handler and count-tokens handler.
  */
 export function createAnthropicAdapter(): AnthropicMessagesAdapter {
-  const knownModelIds = modelCache.getModels()
-    ? new Set(modelCache.getModels()!.data.map(model => model.id))
+  const models = modelCache.getModels()
+  const knownModelIds = models
+    ? new Set(models.data.map(model => model.id))
     : undefined
   const fallbackConfig = getModelFallbackConfig()
 

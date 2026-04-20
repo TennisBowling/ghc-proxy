@@ -1,7 +1,7 @@
 import type { Model, ModelsResponse } from '~/types'
 
-export const RESPONSES_ENDPOINT = '/responses'
-export const MESSAGES_ENDPOINT = '/v1/messages'
+export const RESPONSES_ENDPOINT = '/responses' as const
+export const MESSAGES_ENDPOINT = '/v1/messages' as const
 
 /**
  * Models whose upstream `/v1/messages` endpoint rejects the `output_config`

@@ -6,12 +6,12 @@ import { modelCache } from '~/state'
  */
 export async function handleModelsCore(): Promise<object> {
   if (!modelCache.getModels()) {
-    // This should be handled by startup logic, but as a fallback.
     const copilotClient = createCopilotClient()
     await cacheModels(copilotClient)
   }
 
-  const models = modelCache.getModels()?.data.map(model => ({
+  const cached = modelCache.getModels()
+  const models = cached?.data.map(model => ({
     id: model.id,
     object: 'model',
     type: 'model',

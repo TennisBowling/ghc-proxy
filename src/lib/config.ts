@@ -14,7 +14,7 @@ const reasoningEffortSchema = z.enum([
   'xhigh',
 ])
 
-type ReasoningEffort = z.infer<typeof reasoningEffortSchema>
+export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>
 
 const configFileSchema = z.object({
   githubToken: z.string().optional(),
