@@ -1,22 +1,22 @@
-import type { ExecutionStrategy } from '~/lib/execution-strategy'
+import type { ExecutionResult } from '~/lib/execution-strategy'
 import type { Model } from '~/types'
 
 import consola from 'consola'
 
-export interface StrategyEntry {
+export interface StrategyEntry<TContext = unknown> {
   name: string
   canHandle: (model: Model | undefined) => boolean
-  createStrategy: (...args: any[]) => ExecutionStrategy<any, any>
+  execute: (ctx: TContext) => Promise<ExecutionResult>
 }
 
-export class StrategyRegistry {
-  private entries: StrategyEntry[] = []
+export class StrategyRegistry<TContext = unknown> {
+  private entries: StrategyEntry<TContext>[] = []
 
-  register(entry: StrategyEntry): void {
+  register(entry: StrategyEntry<TContext>): void {
     this.entries.push(entry)
   }
 
-  select(model: Model | undefined): StrategyEntry {
+  select(model: Model | undefined): StrategyEntry<TContext> {
     for (const entry of this.entries) {
       if (entry.canHandle(model)) {
         consola.debug(`Strategy selected: ${entry.name} for model: ${model?.id ?? '(unknown)'}`)
