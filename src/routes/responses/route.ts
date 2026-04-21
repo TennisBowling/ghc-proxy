@@ -43,7 +43,7 @@ export function createResponsesRoutes() {
         headers: request.headers,
         signal: request.signal,
       })
-    })
+    }, { guarded: true })
     .get('/responses/:responseId', async ({ params, request, server }) => {
       if (hasStreamingResponsesQuery(request)) {
         disableIdleTimeout(server, request)
@@ -55,12 +55,12 @@ export function createResponsesRoutes() {
         headers: request.headers,
         signal: request.signal,
       })
-    })
+    }, { guarded: true })
     .delete('/responses/:responseId', async ({ params, request }) => {
       return handleDeleteResponseCore({
         params,
         headers: request.headers,
         signal: request.signal,
       })
-    })
+    }, { guarded: true })
 }
