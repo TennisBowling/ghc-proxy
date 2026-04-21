@@ -97,7 +97,7 @@ describe('UpstreamRequestQueue', () => {
               }),
         )
       },
-      { method: 'POST', url: 'https://api.githubcopilot.com/v1/messages' },
+      { method: 'POST', url: 'https://api.githubcopilot.com/v1/messages', retryable: true },
     )
 
     expect(calls).toBe(2)
@@ -277,7 +277,7 @@ describe('UpstreamRequestQueue', () => {
         calls++
         return Promise.resolve(new Response('rate limited', { status: 429 }))
       },
-      { url: 'https://test' },
+      { url: 'https://test', retryable: true },
       controller.signal,
     )
 
@@ -302,5 +302,133 @@ describe('UpstreamRequestQueue', () => {
 
     expect(await result.response.text()).toBe('ok')
     result.release()
+  })
+
+  test('does not retry 429 when retryable is false', async () => {
+    const queue = new UpstreamRequestQueue(
+      {
+        concurrency: 1,
+        maxRetries: 5,
+        baseDelayMs: 10,
+        maxDelayMs: 5_000,
+      },
+      {
+        sleep: () => Promise.resolve(),
+        logger: { warn: () => {} },
+      },
+    )
+
+    let calls = 0
+    const queued = await queue.dispatch(
+      () => {
+        calls++
+        return Promise.resolve(new Response('rate limited', { status: 429 }))
+      },
+      { method: 'POST', url: 'https://api.githubcopilot.com/responses', retryable: false },
+    )
+
+    expect(calls).toBe(1)
+    expect(queued.response.status).toBe(429)
+    queued.release()
+  })
+
+  test('does not retry 429 when retryable is omitted (safe default)', async () => {
+    const queue = new UpstreamRequestQueue(
+      {
+        concurrency: 1,
+        maxRetries: 5,
+        baseDelayMs: 10,
+        maxDelayMs: 5_000,
+      },
+      {
+        sleep: () => Promise.resolve(),
+        logger: { warn: () => {} },
+      },
+    )
+
+    let calls = 0
+    const queued = await queue.dispatch(
+      () => {
+        calls++
+        return Promise.resolve(new Response('rate limited', { status: 429 }))
+      },
+      { method: 'DELETE', url: 'https://api.githubcopilot.com/responses/resp_123' },
+    )
+
+    expect(calls).toBe(1)
+    expect(queued.response.status).toBe(429)
+    queued.release()
+  })
+
+  test('applies cooldown even when retryable is false', async () => {
+    const now = 1_000
+    const timers: Array<{ callback: () => void, delay: number }> = []
+    const queue = new UpstreamRequestQueue(
+      {
+        concurrency: 1,
+        maxRetries: 5,
+        baseDelayMs: 2_000,
+        maxDelayMs: 60_000,
+      },
+      {
+        now: () => now,
+        sleep: () => Promise.resolve(),
+        logger: { warn: () => {} },
+        setTimeout: ((callback: () => void, delay: number) => {
+          timers.push({ callback, delay })
+          return timers.length as unknown as ReturnType<typeof setTimeout>
+        }) as typeof setTimeout,
+        clearTimeout: (() => {}) as typeof clearTimeout,
+      },
+    )
+
+    const queued = await queue.dispatch(
+      () => Promise.resolve(
+        new Response('rate limited', {
+          status: 429,
+          headers: { 'retry-after': '10' },
+        }),
+      ),
+      { method: 'DELETE', url: 'https://api.githubcopilot.com/responses/resp_123', retryable: false },
+    )
+
+    expect(queued.response.status).toBe(429)
+    queued.release()
+
+    expect(timers.length).toBeGreaterThanOrEqual(1)
+    const lastTimer = timers.at(-1)!
+    expect(lastTimer.delay).toBeGreaterThan(0)
+  })
+
+  test('retries 429 when retryable is true', async () => {
+    const queue = new UpstreamRequestQueue(
+      {
+        concurrency: 1,
+        maxRetries: 5,
+        baseDelayMs: 10,
+        maxDelayMs: 5_000,
+      },
+      {
+        sleep: () => Promise.resolve(),
+        logger: { warn: () => {} },
+      },
+    )
+
+    let calls = 0
+    const queued = await queue.dispatch(
+      () => {
+        calls++
+        return Promise.resolve(
+          calls === 1
+            ? new Response('rate limited', { status: 429 })
+            : new Response(JSON.stringify({ ok: true })),
+        )
+      },
+      { method: 'POST', url: 'https://api.githubcopilot.com/v1/messages', retryable: true },
+    )
+
+    expect(calls).toBe(2)
+    expect(await queued.response.json()).toEqual({ ok: true })
+    queued.release()
   })
 })

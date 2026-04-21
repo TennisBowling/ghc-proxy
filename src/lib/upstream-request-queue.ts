@@ -12,6 +12,7 @@ export interface UpstreamRequestQueueOptions {
 export interface UpstreamRequestContext {
   method?: string
   url: string
+  retryable?: boolean
 }
 
 export interface QueuedUpstreamResponse {
@@ -37,7 +38,7 @@ interface QueueLease {
 
 const DEFAULT_UPSTREAM_QUEUE_OPTIONS: UpstreamRequestQueueOptions = {
   concurrency: 10,
-  maxRetries: 6,
+  maxRetries: 5,
   baseDelayMs: 2_000,
   maxDelayMs: 60_000,
 }
@@ -91,7 +92,10 @@ export class UpstreamRequestQueue {
         throw error
       }
 
-      if (response.status !== 429 || attempt >= this.options.maxRetries) {
+      if (response.status !== 429 || !context.retryable || attempt >= this.options.maxRetries) {
+        if (response.status === 429 && !context.retryable) {
+          this.applyCooldown(this.getRetryDelayMs(response, 0))
+        }
         return {
           response,
           release: lease.release,
