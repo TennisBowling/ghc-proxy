@@ -3,10 +3,10 @@ import type {
   ResponseRetrieveParams,
 } from '~/types'
 
-import { normalizeResponsesRequestContext, readCapiRequestContext } from '~/core/capi/request-context'
+import { readCapiRequestContext } from '~/core/capi/request-context'
 import { createResourceDispatcher } from '~/dispatch/resource-dispatcher'
+import { protocolRegistry } from '~/ingest'
 import { throwInvalidRequestError } from '~/lib/error'
-import { parseResponsesInputTokensPayload } from '~/lib/validation'
 
 // --- Core request parameter interfaces ---
 
@@ -52,12 +52,15 @@ export async function handleListResponseInputItemsCore(
 export async function handleCreateResponseInputTokensCore(
   { body, headers, signal }: ResourceHandlerBodyParams,
 ): Promise<object> {
-  const payload = parseResponsesInputTokensPayload(body)
-  const requestContext = normalizeResponsesRequestContext(payload, headers)
+  const { payload, meta } = protocolRegistry.ingest<import('~/types').ResponsesInputTokensPayload>(
+    'responses-input-tokens',
+    body,
+    headers,
+  )
   const dispatcher = createResourceDispatcher()
   return await dispatcher.createInputTokens(
     payload,
-    { requestContext, signal },
+    { requestContext: meta.requestContext, signal },
   ) as object
 }
 
