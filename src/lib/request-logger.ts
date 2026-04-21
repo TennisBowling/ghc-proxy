@@ -11,7 +11,8 @@ export type ModelTransformTag
 
 export interface ModelTransformStep {
   tag: ModelTransformTag
-  result: string
+  from: string
+  to: string
 }
 
 export interface ModelMappingInfo {
@@ -73,7 +74,7 @@ function colorizeMethod(method: string): string {
 
 export function getEffectiveModel(info: ModelMappingInfo): string {
   return info.steps.length > 0
-    ? info.steps.at(-1)!.result
+    ? info.steps.at(-1)!.to
     : info.originalModel ?? '-'
 }
 
@@ -82,11 +83,12 @@ export function appendModelStep(
   tag: ModelTransformTag,
   newModel: string,
 ): ModelMappingInfo {
-  if (newModel === getEffectiveModel(info))
+  const current = getEffectiveModel(info)
+  if (newModel === current)
     return info
   return {
     originalModel: info.originalModel,
-    steps: [...info.steps, { tag, result: newModel }],
+    steps: [...info.steps, { tag, from: current, to: newModel }],
   }
 }
 
@@ -105,7 +107,7 @@ function formatModelMapping(info: ModelMappingInfo | undefined): string {
     const step = steps[i]
     const isLast = i === steps.length - 1
     parts.push(colorize('dim', `-[${step.tag}]->`))
-    parts.push(colorize(isLast ? 'greenBright' : 'cyanBright', step.result))
+    parts.push(colorize(isLast ? 'greenBright' : 'cyanBright', step.to))
   }
 
   return ` ${colorize('dim', 'model=')}${parts.join(' ')}`

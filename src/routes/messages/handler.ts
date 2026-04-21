@@ -9,6 +9,7 @@ import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseAnthropicMessagesPayload } from '~/lib/validation'
 import { configStore, modelCache } from '~/state'
+import { processAnthropicBetaHeader } from '~/transform/beta-headers'
 
 import { defaultStrategyRegistry, selectStrategy } from './strategy-registry'
 
@@ -21,45 +22,6 @@ export interface MessagesCoreParams {
 export interface MessagesCoreResult {
   result: ExecutionResult
   modelMapping?: ModelMappingInfo
-}
-
-const CONTEXT_BETA_RE = /^context-\d+[km]-/
-
-interface BetaHeaderResult {
-  header: string | undefined
-  upgradeTarget: string | undefined
-}
-
-export function processAnthropicBetaHeader(
-  rawHeader: string | null,
-  model: string,
-): BetaHeaderResult {
-  if (!rawHeader)
-    return { header: undefined, upgradeTarget: undefined }
-
-  const values = rawHeader.split(',').map(v => v.trim()).filter(Boolean)
-  let upgradeTarget: string | undefined
-  const filtered: string[] = []
-
-  for (const value of values) {
-    if (CONTEXT_BETA_RE.test(value)) {
-      // Always strip context-* betas — Copilot doesn't understand them.
-      // If context upgrade is enabled and a target exists, apply it.
-      if (!upgradeTarget && configStore.isContextUpgradeEnabled()) {
-        const target = getContextUpgradeTarget(model)
-        if (target) {
-          upgradeTarget = target
-        }
-      }
-      continue
-    }
-    filtered.push(value)
-  }
-
-  return {
-    header: filtered.length > 0 ? filtered.join(',') : undefined,
-    upgradeTarget,
-  }
 }
 
 /**
@@ -78,7 +40,7 @@ export async function handleMessagesCore(
   const rewrite = applyModelRewrite(anthropicPayload)
   const steps: ModelTransformStep[] = []
   if (rewrite.reason) {
-    steps.push({ tag: rewrite.reason, result: rewrite.model })
+    steps.push({ tag: rewrite.reason, from: rewrite.originalModel, to: rewrite.model })
   }
 
   // Stage 2: Beta header processing (context-1m upgrade + filter)
@@ -88,8 +50,8 @@ export async function handleMessagesCore(
   )
   if (betaResult.upgradeTarget) {
     consola.debug(`Beta header context upgrade: ${anthropicPayload.model} → ${betaResult.upgradeTarget}`)
+    steps.push({ tag: 'BETA_UPGRADE', from: anthropicPayload.model, to: betaResult.upgradeTarget })
     anthropicPayload.model = betaResult.upgradeTarget
-    steps.push({ tag: 'BETA_UPGRADE', result: betaResult.upgradeTarget })
   }
 
   // Stage 3: Model policy (skip proactive context upgrade if already upgraded by beta)
@@ -99,10 +61,10 @@ export async function handleMessagesCore(
     { betaUpgraded: !!betaResult.upgradeTarget },
   )
   if (modelRouting.reason === 'context-upgrade') {
-    steps.push({ tag: 'CONTEXT_UPGRADE', result: modelRouting.routedModel })
+    steps.push({ tag: 'CONTEXT_UPGRADE', from: modelRouting.originalModel, to: modelRouting.routedModel })
   }
   else if (modelRouting.reason === 'compact') {
-    steps.push({ tag: 'COMPACT', result: modelRouting.routedModel })
+    steps.push({ tag: 'COMPACT', from: modelRouting.originalModel, to: modelRouting.routedModel })
   }
   const modelMapping: ModelMappingInfo = {
     originalModel: rewrite.originalModel,
@@ -148,6 +110,7 @@ export async function handleMessagesCore(
     consola.info(
       `Context length exceeded, retrying: ${anthropicPayload.model} → ${upgradeTarget}`,
     )
+    const retryFrom = anthropicPayload.model
     anthropicPayload.model = upgradeTarget
     const retryModel = modelCache.findById(upgradeTarget)
     const retrySignal = createUpstreamSignalFromConfig(signal)
@@ -159,7 +122,7 @@ export async function handleMessagesCore(
       upstreamSignal: retrySignal,
       modelMapping: {
         originalModel: rewrite.originalModel,
-        steps: [...steps, { tag: 'RETRY_UPGRADE', result: upgradeTarget }],
+        steps: [...steps, { tag: 'RETRY_UPGRADE', from: retryFrom, to: upgradeTarget }],
       },
     })
   }

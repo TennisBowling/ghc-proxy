@@ -116,7 +116,7 @@ export async function handleResponsesCore(
 
   const modelMapping: ModelMappingInfo = {
     originalModel: rewrite.originalModel,
-    steps: rewrite.reason ? [{ tag: rewrite.reason, result: rewrite.model }] : [],
+    steps: rewrite.reason ? [{ tag: rewrite.reason, from: rewrite.originalModel, to: rewrite.model }] : [],
   }
 
   return { result, modelMapping }

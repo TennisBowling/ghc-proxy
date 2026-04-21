@@ -41,7 +41,7 @@ export async function handleCompletionCore(
   const rewrite = applyModelRewrite(payload)
   const steps: ModelTransformStep[] = []
   if (rewrite.reason) {
-    steps.push({ tag: rewrite.reason, result: rewrite.model })
+    steps.push({ tag: rewrite.reason, from: rewrite.originalModel, to: rewrite.model })
   }
 
   const selectedModel = modelCache.findById(payload.model)
