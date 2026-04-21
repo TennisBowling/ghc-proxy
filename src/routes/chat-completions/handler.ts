@@ -3,17 +3,14 @@ import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
 import type { ChatCompletionsPayload } from '~/types'
 
 import consola from 'consola'
-import { CopilotTransport, OpenAIChatAdapter } from '~/adapters'
 import { protocolRegistry } from '~/ingest'
-import { runStrategy } from '~/lib/execution-strategy'
-import { appendModelStep } from '~/lib/request-logger'
 import { createCopilotClient } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { modelCache } from '~/state'
 import { chatCompletionsModelChain } from '~/transform'
 
-import { createChatCompletionsStrategy } from './strategy'
+import { chatCompletionsStrategyRegistry } from './strategy-registry'
 
 export interface CompletionCoreParams {
   body: unknown
@@ -32,7 +29,6 @@ export interface CompletionCoreResult {
 export async function handleCompletionCore(
   { body, signal, headers }: CompletionCoreParams,
 ): Promise<CompletionCoreResult> {
-  const adapter = new OpenAIChatAdapter()
   const { payload: parsedPayload, meta } = protocolRegistry.ingest<ChatCompletionsPayload>(
     'openai-chat',
     body,
@@ -70,23 +66,22 @@ export async function handleCompletionCore(
   }
 
   const upstreamSignal = createUpstreamSignalFromConfig(signal)
-
-  const plan = adapter.toCapiPlan(payload, {
-    requestContext,
-  })
+  const copilotClient = createCopilotClient()
 
   const originalModel = transformResult.trace.length > 0 ? transformResult.trace[0].from : payload.model
-  const modelMapping = appendModelStep(
-    { originalModel, steps: transformResult.trace.map(r => ({ tag: r.tag as ModelTransformTag, from: r.from, to: r.to })) },
-    'MODEL_RESOLVE',
-    plan.resolvedModel,
-  )
+  const modelMapping: ModelMappingInfo = {
+    originalModel,
+    steps: transformResult.trace.map(r => ({ tag: r.tag as ModelTransformTag, from: r.from, to: r.to })),
+  }
 
-  const copilotClient = createCopilotClient()
-  const transport = new CopilotTransport(copilotClient)
+  const entry = chatCompletionsStrategyRegistry.select(selectedModel)
+  const result = await entry.execute({
+    copilotClient,
+    payload,
+    upstreamSignal,
+    requestContext,
+    modelMapping,
+  })
 
-  consola.debug('Streaming response')
-  const strategy = createChatCompletionsStrategy(transport, adapter, plan, upstreamSignal.signal)
-  const result = await runStrategy(strategy, upstreamSignal)
   return { result, modelMapping }
 }
