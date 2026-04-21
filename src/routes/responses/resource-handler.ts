@@ -1,3 +1,4 @@
+import type { CapiRequestContext } from '~/core/capi/types'
 import type {
   ResponseInputItemsListParams,
   ResponseRetrieveParams,
@@ -60,7 +61,7 @@ export async function handleCreateResponseInputTokensCore(
   const dispatcher = createResourceDispatcher()
   return await dispatcher.createInputTokens(
     payload,
-    { requestContext: meta.requestContext, signal },
+    { requestContext: meta.requestContext as Partial<CapiRequestContext> | undefined, signal },
   ) as object
 }
 

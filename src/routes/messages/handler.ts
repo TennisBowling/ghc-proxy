@@ -11,7 +11,7 @@ import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { modelCache } from '~/state'
 import { messagesModelChain, processAnthropicBetaHeader } from '~/transform'
 
-import { defaultStrategyRegistry, selectStrategy } from './strategy-registry'
+import { defaultStrategyRegistry } from './strategy-registry'
 
 export interface MessagesCoreParams {
   body: unknown
@@ -85,9 +85,9 @@ export async function handleMessagesCore(
     async (model) => {
       const currentPayload = { ...anthropicPayload, model }
       const currentModel = model === anthropicPayload.model ? selectedModel : modelCache.findById(model)
-      const currentEntry = selectStrategy(defaultStrategyRegistry, currentModel)
+      const currentEntry = defaultStrategyRegistry.select(currentModel)
       const currentSignal = model === anthropicPayload.model ? upstreamSignal : createUpstreamSignalFromConfig(signal)
-      const sr = await currentEntry.execute({
+      return await currentEntry.execute({
         copilotClient,
         anthropicPayload: currentPayload,
         anthropicBetaHeader,
@@ -97,7 +97,6 @@ export async function handleMessagesCore(
         requestContext,
         modelMapping,
       })
-      return sr.result
     },
     { model: anthropicPayload.model, trace: modelMapping.steps.map(s => ({ tag: s.tag, from: s.from, to: s.to })) },
   )

@@ -1,16 +1,17 @@
 import type { CopilotClient } from '~/clients'
 import type { CapiRequestContext } from '~/core/capi'
-import type { ExecutionResult } from '~/lib/execution-strategy'
-import type { ModelMappingInfo } from '~/lib/request-logger'
+import type { StrategyEntry } from '~/dispatch'
+import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
 import type { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import type { AnthropicMessagesPayload } from '~/translator'
-
 import type { Model } from '~/types'
+
 import consola from 'consola'
 import { CopilotTransport } from '~/adapters'
+import { StrategyRegistry } from '~/dispatch'
 import { withTranslationErrors } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
-import { appendModelStep } from '~/lib/request-logger'
+import { getEffectiveModel } from '~/lib/request-logger'
 import { configStore, MESSAGES_ENDPOINT, modelCache, RESPONSES_ENDPOINT } from '~/state'
 import { translateAnthropicToResponsesPayload } from '~/translator/responses/anthropic-to-responses'
 import { SignatureCodec } from '~/translator/responses/signature-codec'
@@ -30,31 +31,6 @@ export interface StrategyContext {
   headers: Headers
   requestContext: Partial<CapiRequestContext>
   modelMapping: ModelMappingInfo
-}
-
-export interface StrategyResult {
-  result: ExecutionResult
-  modelMapping: ModelMappingInfo
-}
-
-export interface StrategyEntry {
-  name: string
-  canHandle: (model: Model | undefined) => boolean
-  execute: (ctx: StrategyContext) => Promise<StrategyResult>
-}
-
-export function selectStrategy(
-  registry: Array<StrategyEntry>,
-  model: Model | undefined,
-): StrategyEntry {
-  for (const entry of registry) {
-    if (entry.canHandle(model)) {
-      consola.debug(`Strategy selected: ${entry.name} for model: ${model?.id ?? '(unknown)'}`)
-      return entry
-    }
-  }
-  // Should never happen if registry has a fallback, but just in case
-  return registry.at(-1)!
 }
 
 function filterThinkingBlocksForNativeMessages(
@@ -181,7 +157,24 @@ function sanitizeCacheControl(payload: AnthropicMessagesPayload): void {
   }
 }
 
-const nativeMessagesEntry: StrategyEntry = {
+/**
+ * Mutate `modelMapping` in place by appending a transform step.
+ * `appendModelStep` from request-logger returns a new object, but here
+ * the handler holds a reference to the same `modelMapping` passed into
+ * the strategy context, so we need to push directly.
+ */
+function appendModelStepInPlace(
+  info: ModelMappingInfo,
+  tag: ModelTransformTag,
+  newModel: string,
+): void {
+  const current = getEffectiveModel(info)
+  if (newModel !== current) {
+    info.steps.push({ tag, from: current, to: newModel })
+  }
+}
+
+const nativeMessagesEntry: StrategyEntry<StrategyContext> = {
   name: 'native-messages',
   canHandle: model => modelCache.supportsEndpoint(model, MESSAGES_ENDPOINT),
   async execute(ctx) {
@@ -198,12 +191,11 @@ const nativeMessagesEntry: StrategyEntry = {
         requestContext: ctx.requestContext,
       },
     )
-    const result = await runStrategy(strategy, ctx.upstreamSignal)
-    return { result, modelMapping: ctx.modelMapping }
+    return await runStrategy(strategy, ctx.upstreamSignal)
   },
 }
 
-const responsesApiEntry: StrategyEntry = {
+const responsesApiEntry: StrategyEntry<StrategyContext> = {
   name: 'responses-api',
   canHandle: model => modelCache.supportsEndpoint(model, RESPONSES_ENDPOINT),
   async execute(ctx) {
@@ -230,12 +222,11 @@ const responsesApiEntry: StrategyEntry = {
         requestContext: ctx.requestContext,
       },
     )
-    const result = await runStrategy(strategy, ctx.upstreamSignal)
-    return { result, modelMapping: ctx.modelMapping }
+    return await runStrategy(strategy, ctx.upstreamSignal)
   },
 }
 
-const chatCompletionsEntry: StrategyEntry = {
+const chatCompletionsEntry: StrategyEntry<StrategyContext> = {
   name: 'chat-completions',
   canHandle: () => true,
   async execute(ctx) {
@@ -246,7 +237,7 @@ const chatCompletionsEntry: StrategyEntry = {
       }),
     )
 
-    const modelMapping = appendModelStep(ctx.modelMapping, 'MODEL_RESOLVE', plan.resolvedModel)
+    appendModelStepInPlace(ctx.modelMapping, 'MODEL_RESOLVE', plan.resolvedModel)
 
     consola.debug(
       'Claude Code requested model:',
@@ -268,13 +259,11 @@ const chatCompletionsEntry: StrategyEntry = {
       plan,
       ctx.upstreamSignal.signal,
     )
-    const result = await runStrategy(strategy, ctx.upstreamSignal)
-    return { result, modelMapping }
+    return await runStrategy(strategy, ctx.upstreamSignal)
   },
 }
 
-export const defaultStrategyRegistry: Array<StrategyEntry> = [
-  nativeMessagesEntry,
-  responsesApiEntry,
-  chatCompletionsEntry,
-]
+export const defaultStrategyRegistry = new StrategyRegistry<StrategyContext>()
+defaultStrategyRegistry.register(nativeMessagesEntry)
+defaultStrategyRegistry.register(responsesApiEntry)
+defaultStrategyRegistry.register(chatCompletionsEntry)
