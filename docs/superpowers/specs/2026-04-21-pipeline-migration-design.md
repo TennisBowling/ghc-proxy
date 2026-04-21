@@ -1,7 +1,7 @@
 # Pipeline Migration: Full Integration
 
 **Date:** 2026-04-21
-**Status:** Proposed
+**Status:** In Progress (Phases 1/3/4 complete, Phases 2/5 remaining)
 **Scope:** All route handlers, pipeline layers (transform, ingest, dispatch, guard, deliver)
 
 ## Problem
@@ -41,130 +41,123 @@ Request
         └── JSON serialization or SSE stream formatting + model mapping
 ```
 
-### Phase 1: Transform Chain Integration
+### Phase 1: Transform Chain Integration — ✅ COMPLETE
 
-**Goal:** Replace inline model transform steps in all 3 handlers with pre-composed chains.
+All 3 handlers use pre-composed model transform chains:
+- `messagesModelChain.apply()` (3 steps: rewrite → beta → policy)
+- `chatCompletionsModelChain.apply()` (1 step: rewrite)
+- `responsesModelChain.apply()` (1 step: rewrite)
 
-**Files changed:**
-- `src/routes/messages/handler.ts` — replace 30-line inline pipeline (rewrite + beta + policy) with `messagesModelChain.apply()`
-- `src/routes/chat-completions/handler.ts` — replace inline rewrite with `chatCompletionsModelChain.apply()`
-- `src/routes/responses/handler.ts` — replace inline rewrite with `responsesModelChain.apply()`
-- `src/lib/request-logger.ts` — update `ModelTransformStep` type to use trace format `{tag, from, to}`
-- `src/routes/messages/handler.ts` — remove inline `processAnthropicBetaHeader()` function (moved to `transform/beta-headers.ts`)
+Trace format unified to `{ tag, from, to }`.
 
-**Trace format unification:**
+### Phase 2: Dispatch Consolidation — ❌ REMAINING
 
-Current `ModelTransformStep`:
-```typescript
-{ tag: string, result: string }
-```
+**Goal:** Unify all routes to use `StrategyRegistry` from `src/dispatch/`.
 
-New (matching transform chain trace):
-```typescript
-{ tag: string, from: string, to: string }
-```
+#### 2a. Unified StrategyEntry interface
 
-This provides more debugging info (what model changed from, not just to). All consumers of `ModelMappingInfo.steps` must be updated.
+Two incompatible interfaces exist:
+- Generic `src/dispatch/strategy-registry.ts`: `createStrategy(...args) => ExecutionStrategy`
+- Local `src/routes/messages/strategy-registry.ts`: `execute(ctx) => Promise<StrategyResult>`
 
-**Transform chain usage example (messages handler):**
-```typescript
-const transformResult = messagesModelChain.apply({
-  model: anthropicPayload.model,
-  payload: anthropicPayload,
-  headers,
-})
-anthropicPayload.model = transformResult.model
-const selectedModel = transformResult.resolvedModel
-```
-
-### Phase 2: Dispatch Consolidation
-
-**Goal:** Unify strategy registry, wire error recovery.
-
-**Strategy registry:**
-- Messages handler currently uses a local `StrategyEntry[]` array + `selectStrategy()` function
-- Migrate to `dispatch/StrategyRegistry` class
-- Move the 3 strategy entries (nativeMessages, responsesApi, chatCompletions) into a `messages/strategies/registry.ts` that creates and populates a `StrategyRegistry` instance
-- Delete the duplicate `selectStrategy` function from `routes/messages/strategy-registry.ts`
-
-**Error recovery:**
-- Replace messages handler's inline context-length try/catch (lines 137-165) with `executeWithContextRetry()`
-- The callback handles modelMapping update internally:
+Unify to generic `execute()` pattern on `StrategyRegistry<TContext>`:
 
 ```typescript
-const result = await executeWithContextRetry(
-  async (model) => {
-    anthropicPayload.model = model
-    const retryModel = modelCache.findById(model)
-    const retryEntry = registry.select(retryModel)
-    return retryEntry.execute(strategyCtx)
-  },
-  transformResult,
-)
+// src/dispatch/strategy-registry.ts
+export interface StrategyEntry<TContext = unknown> {
+  name: string
+  canHandle: (model: Model | undefined) => boolean
+  execute: (ctx: TContext) => Promise<ExecutionResult>
+}
+
+export class StrategyRegistry<TContext = unknown> {
+  private entries: StrategyEntry<TContext>[] = []
+
+  register(entry: StrategyEntry<TContext>): void {
+    this.entries.push(entry)
+  }
+
+  select(model: Model | undefined): StrategyEntry<TContext> {
+    for (const entry of this.entries) {
+      if (entry.canHandle(model)) {
+        consola.debug(`Strategy selected: ${entry.name} for model: ${model?.id ?? '(unknown)'}`)
+        return entry
+      }
+    }
+    return this.entries.at(-1)!
+  }
+}
 ```
 
-**Strategy runner cleanup:**
-- `dispatch/strategy-runner.ts` is a pure re-export of `~/lib/execution-strategy` — delete it
-- All consumers should import directly from `~/lib/execution-strategy`
+#### 2b. Messages: migrate to generic StrategyRegistry
 
-### Phase 3: Ingest Integration
+- `src/routes/messages/strategy-registry.ts`:
+  - Delete local `StrategyEntry` interface and `selectStrategy()` function
+  - Convert `defaultStrategyRegistry` from `Array<StrategyEntry>` to `StrategyRegistry<MessagesStrategyContext>` instance
+  - 3 strategy entries + helper functions (filterThinkingBlocks, sanitizeOutputConfig, etc.) remain in this file
+  - Update `execute()` to return `ExecutionResult` directly (modelMapping handling stays in handler)
+- `src/routes/messages/handler.ts`:
+  - Use `defaultStrategyRegistry.select(model)` instead of `selectStrategy(defaultStrategyRegistry, model)`
 
-**Goal:** Replace inline parse + metadata extraction with protocol registry.
+#### 2c. Chat-completions: add StrategyRegistry
 
-**Changes per handler:**
+- New file `src/routes/chat-completions/strategy-registry.ts`:
+  - Create `chatCompletionsStrategyRegistry` with single entry
+  - Entry's `execute()` encapsulates: adapter setup → CAPI plan → transport → strategy creation → runStrategy
+- `src/routes/chat-completions/handler.ts`:
+  - Use `registry.select()` + `entry.execute()` instead of inline strategy creation
 
-| Handler | Current | After |
-|---------|---------|-------|
-| messages | `parseAnthropicMessagesPayload(body)` + `normalizeAnthropicRequestContext()` | `protocolRegistry.get('anthropic-messages').parse(body)` |
-| chat-completions | `parseOpenAIChatPayload(body)` + context normalization | `protocolRegistry.get('openai-chat').parse(body)` |
-| responses | `parseResponsesPayload(body)` + `normalizeResponsesRequestContext()` | `protocolRegistry.get('responses').parse(body)` |
-| embeddings | `parseEmbeddingRequest(body)` | `protocolRegistry.get('embeddings').parse(body)` |
-| count-tokens | `parseAnthropicCountTokensPayload(body)` | `protocolRegistry.get('anthropic-count-tokens').parse(body)` |
+#### 2d. Responses: add StrategyRegistry
 
-**Registry export:** `protocolRegistry` is created in `src/ingest/index.ts` and exported as a singleton.
+- New file `src/routes/responses/strategy-registry.ts`:
+  - Create `responsesStrategyRegistry` with single entry
+  - Entry's `execute()` encapsulates: tool transforms → input policies → context management → strategy creation → runStrategy → emulator post-processing
+- `src/routes/responses/handler.ts`:
+  - Use `registry.select()` + `entry.execute()` instead of inline strategy creation
 
-### Phase 4: Deliver Layer
+### Phase 3: Ingest Integration — ⚠️ 1 BYPASS REMAINING
 
-**Goal:** Extract response dispatch (JSON/SSE) from route.ts files into a shared deliver layer.
+5 of 6 handlers properly use `protocolRegistry.ingest()`. One bypass remains:
 
-**Create:** `src/deliver/index.ts`
+**Fix:** `src/routes/responses/resource-handler.ts` `handleCreateResponseInputTokensCore()`:
+- Replace `parseResponsesInputTokensPayload(body)` + `normalizeResponsesRequestContext(payload, headers)` with `protocolRegistry.ingest('responses-input-tokens', body, headers)`
+- `meta.requestContext` replaces manual normalization (ingest handler calls the same function internally)
 
-The deliver layer provides a function that converts `ExecutionResult` into the appropriate HTTP response format:
+### Phase 4: Deliver Layer — ✅ COMPLETE
 
-```typescript
-export function deliverResult(
-  result: ExecutionResult,
-  modelMapping?: ModelMappingInfo,
-): Response | AsyncGenerator<SSEOutput>
-```
+`deliverResult()` in `src/deliver/index.ts` handles all streaming routes. Non-streaming routes return plain objects directly.
 
-**Consolidates from 3 route files:**
-- `result.kind === 'json'` → return JSON data
-- `result.kind === 'stream'` → yield through `sseAdapter(result.generator)`
-- Model mapping logging via `setRequestModelMapping()`
+### Phase 5: Guard + Cleanup — ❌ REMAINING
 
-**Route-specific behavior preserved:**
-- Idle timeout management stays in route.ts (it's an Elysia framework concern, not a deliver concern)
-- Route.ts files become thin: parse params → call handler → call deliver
+#### 5a. Guard: `/embeddings` route
 
-### Phase 5: Guard + Cleanup
+`src/routes/embeddings/route.ts`:
+- Import and `.use(requestGuardPlugin)`
+- Add `{ guarded: true }` to POST handler
 
-**Guard layer:**
-- Wrap existing rate limiting logic into `guard/` entry point
-- Wire into route handlers (call guard before ingest)
-- Guard only wraps existing rate limiting — no new auth checks
+#### 5b. Guard: `/responses` resource routes
 
-**Cleanup — delete dead code:**
-- `src/pipeline/context.ts` — thin wrapper, not used
-- `src/dispatch/strategy-runner.ts` — re-export, consumers import directly
-- Inline `processAnthropicBetaHeader` in messages handler — moved to transform/
-- Any remaining dead imports or unused functions
+`src/routes/responses/route.ts`:
+- Add `{ guarded: true }` to:
+  - `GET /responses/:responseId/input_items`
+  - `GET /responses/:responseId`
+  - `DELETE /responses/:responseId`
+- Plugin is already registered (`.use(requestGuardPlugin)` at top), only the option is missing
 
-**Cleanup — verify no dual implementations remain:**
-- Handlers should not directly import `applyModelRewrite`, `applyMessagesModelPolicy`, or parse functions
-- All model transforms go through transform chains
-- All parsing goes through ingest registry
-- All response dispatch goes through deliver
+#### 5c. Routes intentionally without guard
+
+- `/models` — read-only public info (per original design doc)
+- `/token`, `/usage` — read-only diagnostic endpoints
+
+#### 5d. Documentation update
+
+- This spec: Status → "Implemented"
+- `CLAUDE.md` + `AGENTS.md`: Update architecture section to describe 5-layer pipeline instead of "4-stage model transformation", update Key Modules table
+
+#### 5e. Cleanup
+
+- Verify no dual implementations remain
+- Delete dead dispatch code if any (`dispatch/strategy-runner.ts` if still exists)
 
 ## Migration Strategy
 
@@ -178,17 +171,15 @@ Phases can be merged independently. If a phase introduces regressions, it can be
 
 ## Test Strategy
 
-- **No new test files needed for Phases 1-3** — these are pure refactors that preserve behavior. Existing tests verify correctness.
-- **Phase 4 (Deliver)** — may need tests if the deliver function has non-trivial logic
-- **Phase 5 (Guard)** — needs tests if guard wraps rate limiting with new behavior
+- **No new test files needed** — these are pure refactors that preserve behavior. Existing tests verify correctness.
 - **After all phases** — run `bun run matrix:live` to verify end-to-end compatibility (if available)
 
 ## Risk Assessment
 
 | Phase | Risk | Mitigation |
 |-------|------|-----------|
-| 1. Transform | Low | Chain wraps existing functions, trace format is additive |
-| 2. Dispatch | Medium | Error recovery callback must preserve exact retry semantics |
-| 3. Ingest | Low | Registry delegates to same parse functions |
-| 4. Deliver | Medium | Response format must be byte-identical for streaming |
+| 1. Transform | ✅ Complete | — |
+| 2. Dispatch | Medium | Preserve exact entry execution semantics; messages retry logic must re-select strategy |
+| 3. Ingest | ✅ Complete (1 fix remaining) | Registry delegates to same parse function |
+| 4. Deliver | ✅ Complete | — |
 | 5. Guard+Cleanup | Low | Guard wraps existing code, cleanup is deletion |
