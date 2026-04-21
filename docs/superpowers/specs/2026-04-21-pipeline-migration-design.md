@@ -1,7 +1,7 @@
 # Pipeline Migration: Full Integration
 
 **Date:** 2026-04-21
-**Status:** In Progress (Phases 1/3/4 complete, Phases 2/5 remaining)
+**Status:** Implemented
 **Scope:** All route handlers, pipeline layers (transform, ingest, dispatch, guard, deliver)
 
 ## Problem
@@ -50,7 +50,7 @@ All 3 handlers use pre-composed model transform chains:
 
 Trace format unified to `{ tag, from, to }`.
 
-### Phase 2: Dispatch Consolidation — ❌ REMAINING
+### Phase 2: Dispatch Consolidation — ✅ COMPLETE
 
 **Goal:** Unify all routes to use `StrategyRegistry` from `src/dispatch/`.
 
@@ -115,7 +115,7 @@ export class StrategyRegistry<TContext = unknown> {
 - `src/routes/responses/handler.ts`:
   - Use `registry.select()` + `entry.execute()` instead of inline strategy creation
 
-### Phase 3: Ingest Integration — ⚠️ 1 BYPASS REMAINING
+### Phase 3: Ingest Integration — ✅ COMPLETE
 
 5 of 6 handlers properly use `protocolRegistry.ingest()`. One bypass remains:
 
@@ -127,7 +127,7 @@ export class StrategyRegistry<TContext = unknown> {
 
 `deliverResult()` in `src/deliver/index.ts` handles all streaming routes. Non-streaming routes return plain objects directly.
 
-### Phase 5: Guard + Cleanup — ❌ REMAINING
+### Phase 5: Guard + Cleanup — ✅ COMPLETE
 
 #### 5a. Guard: `/embeddings` route
 

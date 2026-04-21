@@ -48,18 +48,19 @@ The proxy uses a per-model strategy pattern (`src/routes/messages/strategies/`) 
 2. **Responses Translation** — Anthropic → Responses → Anthropic when only `/responses` is available
 3. **Chat Completions Fallback** — Anthropic → OpenAI Chat → Anthropic (legacy)
 
-### Model Pipeline (`/v1/messages`)
+### Request Pipeline
 
-Every `/v1/messages` request runs through a 4-stage model transformation in `src/routes/messages/handler.ts`:
+Every route handler is a thin orchestrator of the 5-layer pipeline:
 
-1. **Model Rewrite** (`src/lib/model-rewrite.ts`) — User-configured glob rules (first match wins), then built-in normalization (dash/dot equivalence against Copilot's cached model list). Runs once at handler entry.
-2. **Beta Header Processing** (`handler.ts: processAnthropicBetaHeader`) — Strips `context-*` betas (Copilot doesn't understand them). If context upgrade is enabled and a matching rule exists, triggers upgrade to the 1m variant.
-3. **Model Policy** (`src/lib/request-model-policy.ts`) — Proactive context upgrade (estimated tokens > threshold → 1m variant, skipped if beta already upgraded). Compact routing (summarization requests → `smallModel` if configured and capability-compatible).
-4. **Strategy Selection** (`src/routes/messages/strategy-registry.ts`) — Picks native-messages, responses-translation, or chat-completions based on the model's `supported_endpoints`.
+```
+Guard → Ingest → Transform → Dispatch → Deliver
+```
 
-**Error retry:** Context-length errors (HTTP 400 with pattern-matched message) trigger reactive upgrade to the 1m variant and re-execute with a fresh strategy selection.
-
-**Other routes:** `/v1/chat/completions` uses a simpler pipeline (rewrite → legacy ModelResolver fallback). `/v1/responses` uses rewrite only.
+1. **Guard** (`src/guard/`) — Auth check and rate limiting, applied as an Elysia plugin.
+2. **Ingest** (`src/ingest/`) — Protocol-specific parsing, Zod validation, and metadata extraction via `ProtocolRegistry`.
+3. **Transform** (`src/transform/`) — Composable model transform chain (rewrite, beta-header processing, model policy). Messages route uses a 3-step chain; chat-completions and responses use single-step variants.
+4. **Dispatch** (`src/dispatch/`) — Strategy selection via `StrategyRegistry`, execution, and error recovery (context-length retry with model upgrade). Messages route has 3 strategies; chat-completions and responses use single-strategy registries.
+5. **Deliver** (`src/deliver/`) — Converts `ExecutionResult` into the HTTP response (SSE streaming or JSON serialization, error formatting, model mapping).
 
 ### Route File Pattern
 
