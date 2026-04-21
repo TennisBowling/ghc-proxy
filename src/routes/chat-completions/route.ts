@@ -1,8 +1,7 @@
 import { Elysia } from 'elysia'
 
-import { setRequestModelMapping } from '~/lib/request-logger'
+import { deliverResult } from '~/deliver'
 import { disableIdleTimeout, hasStreamingFlag } from '~/lib/request-timeout'
-import { sseAdapter } from '~/lib/sse-adapter'
 import { requestGuardPlugin } from '~/routes/middleware/request-guard'
 
 import { handleCompletionCore } from './handler'
@@ -20,11 +19,9 @@ export function createCompletionRoutes() {
         signal: request.signal,
         headers: request.headers,
       })
-      if (modelMapping)
-        setRequestModelMapping(request, modelMapping)
-      if (result.kind === 'json') {
-        return result.data
-      }
-      yield* sseAdapter(result.generator)
+      const delivery = deliverResult(request, result, modelMapping)
+      if (!delivery.streaming)
+        return delivery.data
+      yield* delivery.stream
     }, { guarded: true })
 }
