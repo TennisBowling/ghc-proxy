@@ -1,15 +1,15 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
 import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
+import type { ChatCompletionsPayload } from '~/types'
 
 import consola from 'consola'
 import { CopilotTransport, OpenAIChatAdapter } from '~/adapters'
-import { normalizeChatRequestContext } from '~/core/capi/request-context'
+import { protocolRegistry } from '~/ingest'
 import { runStrategy } from '~/lib/execution-strategy'
 import { appendModelStep } from '~/lib/request-logger'
 import { createCopilotClient } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
-import { parseOpenAIChatPayload } from '~/lib/validation'
 import { modelCache } from '~/state'
 import { chatCompletionsModelChain } from '~/transform'
 
@@ -33,8 +33,13 @@ export async function handleCompletionCore(
   { body, signal, headers }: CompletionCoreParams,
 ): Promise<CompletionCoreResult> {
   const adapter = new OpenAIChatAdapter()
-  let payload = parseOpenAIChatPayload(body)
-  const requestContext = normalizeChatRequestContext(payload, headers)
+  const { payload: parsedPayload, meta } = protocolRegistry.ingest<ChatCompletionsPayload>(
+    'openai-chat',
+    body,
+    headers,
+  )
+  let payload = parsedPayload
+  const requestContext = meta.requestContext as Partial<import('~/core/capi').CapiRequestContext>
   consola.debug('Request payload:', JSON.stringify(payload).slice(-400))
 
   // Run model transform chain (rewrite step)

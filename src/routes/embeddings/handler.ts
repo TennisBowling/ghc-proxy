@@ -1,7 +1,7 @@
 import type { EmbeddingRequest } from '~/types'
 
+import { protocolRegistry } from '~/ingest'
 import { createCopilotClient } from '~/lib/state'
-import { parseEmbeddingRequest } from '~/lib/validation'
 
 function normalizeEmbeddingRequest(payload: EmbeddingRequest): EmbeddingRequest {
   return {
@@ -14,7 +14,11 @@ function normalizeEmbeddingRequest(payload: EmbeddingRequest): EmbeddingRequest 
  * Core handler for creating embeddings.
  */
 export async function handleEmbeddingsCore(body: unknown): Promise<object> {
-  const payload = parseEmbeddingRequest(body)
+  const { payload } = protocolRegistry.ingest<EmbeddingRequest>(
+    'embeddings',
+    body,
+    new Headers(),
+  )
   const copilotClient = createCopilotClient()
   return await copilotClient.createEmbeddings(normalizeEmbeddingRequest(payload))
 }

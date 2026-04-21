@@ -1,10 +1,10 @@
+import type { AnthropicCountTokensPayload } from '~/translator'
 import consola from 'consola'
 
 import { inferModelFamily } from '~/core/capi/profile'
-import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
+import { protocolRegistry } from '~/ingest'
 import { resolveModelOrThrow, withTranslationErrors } from '~/lib/error'
 import { getTokenCount } from '~/lib/tokenizer'
-import { parseAnthropicCountTokensPayload } from '~/lib/validation'
 
 import { createAnthropicAdapter } from './shared'
 
@@ -33,8 +33,11 @@ export async function handleCountTokensCore(
   { body, headers }: CountTokensCoreParams,
 ): Promise<{ input_tokens: number }> {
   const anthropicBeta = headers.get('anthropic-beta') ?? undefined
-  const anthropicPayload = parseAnthropicCountTokensPayload(body)
-  normalizeAnthropicRequestContext(anthropicPayload, headers)
+  const { payload: anthropicPayload } = protocolRegistry.ingest<AnthropicCountTokensPayload>(
+    'anthropic-count-tokens',
+    body,
+    headers,
+  )
 
   const adapter = createAnthropicAdapter()
   const openAIPayload = withTranslationErrors(() => adapter.toTokenCountPayload(anthropicPayload))

@@ -3,13 +3,13 @@ import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
 
 import type { ResponseFunctionTool, ResponsesPayload, ResponsesResult, ResponseTool } from '~/types'
 import consola from 'consola'
-import { normalizeResponsesRequestContext, resolveInitiator } from '~/core/capi/request-context'
+import { resolveInitiator } from '~/core/capi/request-context'
+import { protocolRegistry } from '~/ingest'
 import { throwInvalidRequestError } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
 import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
-import { parseResponsesPayload } from '~/lib/validation'
 import { configStore, modelCache, RESPONSES_ENDPOINT } from '~/state'
 import { responsesModelChain } from '~/transform'
 
@@ -36,8 +36,12 @@ export interface ResponsesCoreResult {
 export async function handleResponsesCore(
   { body, signal, headers }: ResponsesCoreParams,
 ): Promise<ResponsesCoreResult> {
-  const payload = parseResponsesPayload(body)
-  const requestContext = normalizeResponsesRequestContext(payload, headers)
+  const { payload, meta } = protocolRegistry.ingest<ResponsesPayload>(
+    'responses',
+    body,
+    headers,
+  )
+  const requestContext = meta.requestContext as Partial<import('~/core/capi').CapiRequestContext>
   const emulatorMode = configStore.isEmulatorEnabled()
   const emulatorPrepared = emulatorMode
     ? prepareEmulatorRequest(payload)

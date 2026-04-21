@@ -1,12 +1,13 @@
+import type { CapiRequestContext } from '~/core/capi'
 import type { ExecutionResult } from '~/lib/execution-strategy'
 import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
+import type { AnthropicMessagesPayload } from '~/translator'
 import consola from 'consola'
 
-import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
 import { executeWithContextRetry } from '~/dispatch/error-recovery'
+import { protocolRegistry } from '~/ingest'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
-import { parseAnthropicMessagesPayload } from '~/lib/validation'
 import { modelCache } from '~/state'
 import { messagesModelChain, processAnthropicBetaHeader } from '~/transform'
 
@@ -30,8 +31,12 @@ export interface MessagesCoreResult {
 export async function handleMessagesCore(
   { body, signal, headers }: MessagesCoreParams,
 ): Promise<MessagesCoreResult> {
-  const anthropicPayload = parseAnthropicMessagesPayload(body)
-  const requestContext = normalizeAnthropicRequestContext(anthropicPayload, headers)
+  const { payload: anthropicPayload, meta } = protocolRegistry.ingest<AnthropicMessagesPayload>(
+    'anthropic-messages',
+    body,
+    headers,
+  )
+  const requestContext = meta.requestContext as Partial<CapiRequestContext>
   if (consola.level >= 4)
     consola.debug('Anthropic request payload:', JSON.stringify(anthropicPayload))
 
@@ -43,13 +48,11 @@ export async function handleMessagesCore(
   const anthropicBetaHeader = betaResult.header
 
   // Run the 3-step model transform chain (rewrite → beta upgrade → policy)
-  const rawBeta = headers.get('anthropic-beta')
-  const betaHeaders = rawBeta ? rawBeta.split(',').map(v => v.trim()).filter(Boolean) : undefined
   const transformResult = messagesModelChain.apply({
     model: anthropicPayload.model,
     payload: anthropicPayload,
     headers,
-    meta: { betaHeaders },
+    meta: { betaHeaders: meta.betaHeaders },
   })
 
   // Apply the final model from the chain
