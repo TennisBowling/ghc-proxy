@@ -33,6 +33,7 @@ interface RequestOptions {
   signal?: AbortSignal
   headerOptions?: CopilotHeaderOptions
   extraHeaders?: Record<string, string>
+  retryable?: boolean
 }
 
 interface FetchParams {
@@ -82,7 +83,7 @@ export class CopilotClient {
       },
     }
 
-    const queuedResponse = await this.fetchWithQueue(request)
+    const queuedResponse = await this.fetchWithQueue(request, options.retryable)
     const { response } = queuedResponse
 
     if (!response.ok) {
@@ -122,6 +123,7 @@ export class CopilotClient {
     const { response, release } = await this.request(path, errorMessage, {
       method: 'POST',
       body: JSON.stringify(payload),
+      retryable: true,
       ...options,
     })
 
@@ -139,12 +141,14 @@ export class CopilotClient {
 
   private async fetchWithQueue(
     request: FetchParams,
+    retryable?: boolean,
   ): Promise<QueuedUpstreamResponse> {
     const fetcher = () => this.fetchImpl(request.url, request.init)
     if (this.requestQueue) {
       return this.requestQueue.dispatch(fetcher, {
         method: request.init.method,
         url: request.url,
+        retryable,
       }, request.init.signal ?? undefined)
     }
 
@@ -194,7 +198,7 @@ export class CopilotClient {
     return this.requestJson<EmbeddingResponse>(
       '/embeddings',
       'Failed to create embeddings',
-      { method: 'POST', body: JSON.stringify(payload) },
+      { method: 'POST', body: JSON.stringify(payload), retryable: true },
     )
   }
 
@@ -202,6 +206,7 @@ export class CopilotClient {
     return this.requestJson<ModelsResponse>(
       '/models',
       'Failed to get models',
+      { retryable: true },
     )
   }
 
@@ -243,6 +248,7 @@ export class CopilotClient {
       {
         signal: options?.signal,
         headerOptions: { requestContext: options?.requestContext },
+        retryable: true,
       },
     )
   }
@@ -261,6 +267,7 @@ export class CopilotClient {
       {
         signal: options?.signal,
         headerOptions: { requestContext: options?.requestContext },
+        retryable: true,
       },
     )
   }
@@ -280,6 +287,7 @@ export class CopilotClient {
         body: JSON.stringify(payload),
         signal: options?.signal,
         headerOptions: { requestContext: options?.requestContext },
+        retryable: true,
       },
     )
   }
