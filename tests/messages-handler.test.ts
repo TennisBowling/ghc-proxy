@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { processAnthropicBetaHeader } from '~/routes/messages/handler'
 import { modelCache } from '~/state'
+import { processAnthropicBetaHeader } from '~/transform/beta-headers'
 
 import { buildModel, buildModelsResponse, clearConfig } from './helpers'
 
