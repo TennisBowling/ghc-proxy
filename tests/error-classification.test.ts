@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { Elysia } from 'elysia'
 
 import { CopilotClient } from '~/clients'
+import { runGuard } from '~/guard'
 import { HTTPError } from '~/lib/error'
 import { sseAdapter } from '~/lib/sse-adapter'
 import { handleMessagesCore } from '~/routes/messages/handler'
-import { runRequestGuard } from '~/routes/middleware/request-guard'
 
 let originalCreateChatCompletions: typeof CopilotClient.prototype.createChatCompletions
 
@@ -48,7 +48,7 @@ function createTestApp() {
       )
     })
     .post('/v1/messages', async function* ({ body, request }) {
-      await runRequestGuard()
+      await runGuard()
       const { result } = await handleMessagesCore({
         body,
         signal: request.signal,
