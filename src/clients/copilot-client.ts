@@ -145,7 +145,7 @@ export class CopilotClient {
       return this.requestQueue.dispatch(fetcher, {
         method: request.init.method,
         url: request.url,
-      })
+      }, request.init.signal ?? undefined)
     }
 
     return {

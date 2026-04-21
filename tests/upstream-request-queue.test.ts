@@ -186,4 +186,121 @@ describe('UpstreamRequestQueue', () => {
     first.release()
     second.release()
   })
+
+  test('falls back to default concurrency for NaN input', async () => {
+    const queue = new UpstreamRequestQueue(
+      { concurrency: Number.NaN } as Partial<import('~/lib/upstream-request-queue').UpstreamRequestQueueOptions>,
+    )
+
+    let calls = 0
+    const responses = []
+    for (let i = 0; i < 10; i++) {
+      responses.push(await queue.dispatch(
+        () => {
+          calls++
+          return Promise.resolve(new Response('ok'))
+        },
+        { url: 'https://test' },
+      ))
+    }
+    expect(calls).toBe(10)
+    for (const r of responses) r.release()
+  })
+
+  test('falls back to default concurrency for Infinity input', async () => {
+    const queue = new UpstreamRequestQueue(
+      { concurrency: Number.POSITIVE_INFINITY },
+    )
+
+    const result = await queue.dispatch(
+      () => Promise.resolve(new Response('ok')),
+      { url: 'https://test' },
+    )
+    result.release()
+  })
+
+  test('rejects dispatch immediately when signal is already aborted', async () => {
+    const queue = new UpstreamRequestQueue({ concurrency: 1 })
+    const controller = new AbortController()
+    controller.abort('cancelled')
+
+    await expect(
+      queue.dispatch(
+        () => Promise.resolve(new Response('ok')),
+        { url: 'https://test' },
+        controller.signal,
+      ),
+    ).rejects.toBe('cancelled')
+  })
+
+  test('aborts acquire wait when signal fires', async () => {
+    const queue = new UpstreamRequestQueue({ concurrency: 1 })
+
+    const first = await queue.dispatch(
+      () => Promise.resolve(new Response('ok')),
+      { url: 'https://test' },
+    )
+
+    const controller = new AbortController()
+    const blocked = queue.dispatch(
+      () => Promise.resolve(new Response('should not run')),
+      { url: 'https://test' },
+      controller.signal,
+    )
+
+    await Promise.resolve()
+    controller.abort('client disconnected')
+
+    await expect(blocked).rejects.toBe('client disconnected')
+    first.release()
+  })
+
+  test('aborts backoff sleep when signal fires during retry wait', async () => {
+    let sleepResolve: (() => void) | undefined
+    const queue = new UpstreamRequestQueue(
+      {
+        concurrency: 1,
+        maxRetries: 3,
+        baseDelayMs: 60_000,
+        maxDelayMs: 60_000,
+      },
+      {
+        sleep: () => new Promise<void>((resolve) => { sleepResolve = resolve }),
+        logger: { warn: () => {} },
+      },
+    )
+
+    const controller = new AbortController()
+    let calls = 0
+    const dispatched = queue.dispatch(
+      () => {
+        calls++
+        return Promise.resolve(new Response('rate limited', { status: 429 }))
+      },
+      { url: 'https://test' },
+      controller.signal,
+    )
+
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(calls).toBe(1)
+    expect(sleepResolve).toBeDefined()
+
+    controller.abort('timeout')
+
+    await expect(dispatched).rejects.toBe('timeout')
+  })
+
+  test('dispatch works normally when signal is provided but not aborted', async () => {
+    const queue = new UpstreamRequestQueue({ concurrency: 1 })
+    const controller = new AbortController()
+
+    const result = await queue.dispatch(
+      () => Promise.resolve(new Response('ok')),
+      { url: 'https://test' },
+      controller.signal,
+    )
+
+    expect(await result.response.text()).toBe('ok')
+    result.release()
+  })
 })

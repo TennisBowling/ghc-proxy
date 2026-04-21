@@ -74,11 +74,13 @@ export class UpstreamRequestQueue {
   async dispatch(
     fetcher: () => Promise<Response>,
     context: UpstreamRequestContext,
+    signal?: AbortSignal,
   ): Promise<QueuedUpstreamResponse> {
     let attempt = 0
 
     for (;;) {
-      const lease = await this.acquire()
+      signal?.throwIfAborted()
+      const lease = await this.acquire(signal)
       let response: Response
 
       try {
@@ -108,14 +110,35 @@ export class UpstreamRequestQueue {
           `(attempt ${attempt + 1}/${this.options.maxRetries})`,
         ].join(' '),
       )
-      await this.sleep(delayMs)
+      await abortableSleep(this.sleep, delayMs, signal)
       attempt++
     }
   }
 
-  private acquire(): Promise<QueueLease> {
-    return new Promise((resolve) => {
-      this.waiters.push(resolve)
+  private acquire(signal?: AbortSignal): Promise<QueueLease> {
+    signal?.throwIfAborted()
+
+    return new Promise<QueueLease>((resolve, reject) => {
+      let resolved = false
+
+      const waiter = (lease: QueueLease) => {
+        resolved = true
+        resolve(lease)
+      }
+
+      this.waiters.push(waiter)
+
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          if (resolved)
+            return
+          const idx = this.waiters.indexOf(waiter)
+          if (idx !== -1)
+            this.waiters.splice(idx, 1)
+          reject(signal.reason)
+        }, { once: true })
+      }
+
       this.drain()
     })
   }
@@ -191,14 +214,18 @@ export function parseRetryAfterMs(headers: Headers, now = Date.now()): number | 
   return Math.max(0, retryAt - now)
 }
 
+function finiteOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) ? value : fallback
+}
+
 function normalizeOptions(
   options: Partial<UpstreamRequestQueueOptions>,
 ): UpstreamRequestQueueOptions {
   return {
-    concurrency: Math.max(1, Math.floor(options.concurrency ?? DEFAULT_UPSTREAM_QUEUE_OPTIONS.concurrency)),
-    maxRetries: Math.max(0, Math.floor(options.maxRetries ?? DEFAULT_UPSTREAM_QUEUE_OPTIONS.maxRetries)),
-    baseDelayMs: Math.max(0, Math.floor(options.baseDelayMs ?? DEFAULT_UPSTREAM_QUEUE_OPTIONS.baseDelayMs)),
-    maxDelayMs: Math.max(1, Math.floor(options.maxDelayMs ?? DEFAULT_UPSTREAM_QUEUE_OPTIONS.maxDelayMs)),
+    concurrency: Math.max(1, Math.floor(finiteOr(options.concurrency, DEFAULT_UPSTREAM_QUEUE_OPTIONS.concurrency))),
+    maxRetries: Math.max(0, Math.floor(finiteOr(options.maxRetries, DEFAULT_UPSTREAM_QUEUE_OPTIONS.maxRetries))),
+    baseDelayMs: Math.max(0, Math.floor(finiteOr(options.baseDelayMs, DEFAULT_UPSTREAM_QUEUE_OPTIONS.baseDelayMs))),
+    maxDelayMs: Math.max(1, Math.floor(finiteOr(options.maxDelayMs, DEFAULT_UPSTREAM_QUEUE_OPTIONS.maxDelayMs))),
   }
 }
 
@@ -241,4 +268,32 @@ function formatDelay(delayMs: number): string {
   return delayMs < 1000
     ? `${delayMs}ms`
     : `${Math.round(delayMs / 1000)}s`
+}
+
+function abortableSleep(
+  sleep: (ms: number) => Promise<void>,
+  ms: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!signal)
+    return sleep(ms)
+  signal.throwIfAborted()
+
+  return new Promise<void>((resolve, reject) => {
+    let done = false
+
+    signal.addEventListener('abort', () => {
+      if (done)
+        return
+      done = true
+      reject(signal.reason)
+    }, { once: true })
+
+    sleep(ms).then(() => {
+      if (done)
+        return
+      done = true
+      resolve()
+    })
+  })
 }
