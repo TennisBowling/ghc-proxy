@@ -3,11 +3,11 @@ import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
 import consola from 'consola'
 
 import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
-import { getContextUpgradeTarget, isContextLengthError } from '~/lib/model-rewrite'
+import { executeWithContextRetry } from '~/dispatch/error-recovery'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseAnthropicMessagesPayload } from '~/lib/validation'
-import { configStore, modelCache } from '~/state'
+import { modelCache } from '~/state'
 import { messagesModelChain, processAnthropicBetaHeader } from '~/transform'
 
 import { defaultStrategyRegistry, selectStrategy } from './strategy-registry'
@@ -78,53 +78,26 @@ export async function handleMessagesCore(
   const upstreamSignal = createUpstreamSignalFromConfig(signal)
   const copilotClient = createCopilotClient()
 
-  const entry = selectStrategy(defaultStrategyRegistry, selectedModel)
+  const strategyResult = await executeWithContextRetry(
+    async (model) => {
+      const currentPayload = { ...anthropicPayload, model }
+      const currentModel = model === anthropicPayload.model ? selectedModel : modelCache.findById(model)
+      const currentEntry = selectStrategy(defaultStrategyRegistry, currentModel)
+      const currentSignal = model === anthropicPayload.model ? upstreamSignal : createUpstreamSignalFromConfig(signal)
+      const sr = await currentEntry.execute({
+        copilotClient,
+        anthropicPayload: currentPayload,
+        anthropicBetaHeader,
+        selectedModel: currentModel,
+        upstreamSignal: currentSignal,
+        headers,
+        requestContext,
+        modelMapping,
+      })
+      return sr.result
+    },
+    { model: anthropicPayload.model, trace: modelMapping.steps.map(s => ({ tag: s.tag, from: s.from, to: s.to })) },
+  )
 
-  const strategyCtx = {
-    copilotClient,
-    anthropicPayload,
-    anthropicBetaHeader,
-    selectedModel,
-    upstreamSignal,
-    headers,
-    requestContext,
-    modelMapping,
-  }
-
-  let strategyResult
-  try {
-    strategyResult = await entry.execute(strategyCtx)
-  }
-  catch (error) {
-    const upgradeTarget = configStore.isContextUpgradeEnabled() && isContextLengthError(error)
-      ? getContextUpgradeTarget(anthropicPayload.model)
-      : undefined
-
-    if (!upgradeTarget)
-      throw error
-
-    consola.info(
-      `Context length exceeded, retrying: ${anthropicPayload.model} → ${upgradeTarget}`,
-    )
-    const retryFrom = anthropicPayload.model
-    anthropicPayload.model = upgradeTarget
-    const retryModel = modelCache.findById(upgradeTarget)
-    const retrySignal = createUpstreamSignalFromConfig(signal)
-    const retryEntry = selectStrategy(defaultStrategyRegistry, retryModel)
-    strategyResult = await retryEntry.execute({
-      ...strategyCtx,
-      anthropicPayload,
-      selectedModel: retryModel,
-      upstreamSignal: retrySignal,
-      modelMapping: {
-        originalModel,
-        steps: [...modelMapping.steps, { tag: 'RETRY_UPGRADE', from: retryFrom, to: upgradeTarget }],
-      },
-    })
-  }
-
-  return {
-    result: strategyResult.result,
-    modelMapping: strategyResult.modelMapping,
-  }
+  return { result: strategyResult, modelMapping }
 }

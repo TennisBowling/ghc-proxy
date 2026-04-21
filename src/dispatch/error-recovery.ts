@@ -3,6 +3,7 @@ import type { ModelTransformResult } from '~/pipeline/types'
 
 import consola from 'consola'
 import { getContextUpgradeTarget, isContextLengthError } from '~/lib/model-rewrite'
+import { configStore } from '~/state'
 
 export async function executeWithContextRetry(
   executeFn: (model: string) => Promise<ExecutionResult>,
@@ -13,6 +14,8 @@ export async function executeWithContextRetry(
   }
   catch (error) {
     if (!isContextLengthError(error))
+      throw error
+    if (!configStore.isContextUpgradeEnabled())
       throw error
     const upgradeTarget = getContextUpgradeTarget(modelInfo.model)
     if (!upgradeTarget)
