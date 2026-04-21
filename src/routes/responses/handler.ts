@@ -3,10 +3,8 @@ import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
 
 import type { ResponseFunctionTool, ResponsesPayload, ResponsesResult, ResponseTool } from '~/types'
 import consola from 'consola'
-import { resolveInitiator } from '~/core/capi/request-context'
 import { protocolRegistry } from '~/ingest'
 import { throwInvalidRequestError } from '~/lib/error'
-import { runStrategy } from '~/lib/execution-strategy'
 import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
@@ -15,7 +13,7 @@ import { responsesModelChain } from '~/transform'
 
 import { applyContextManagement, compactInputByLatestCompaction, getResponsesRequestOptions } from './context-management'
 import { decorateStoredResponse, persistEmulatorResponse, prepareEmulatorRequest } from './emulator'
-import { createResponsesPassthroughStrategy } from './strategy'
+import { responsesStrategyRegistry } from './strategy-registry'
 
 const HTTP_URL_RE = /^https?:\/\//i
 
@@ -83,14 +81,17 @@ export async function handleResponsesCore(
     ? (response: ResponsesResult) => decorateStoredResponse(response, payload, emulatorPrepared)
     : undefined
 
-  const strategy = createResponsesPassthroughStrategy(copilotClient, effectivePayload, {
-    vision,
-    initiator: resolveInitiator(initiator, requestContext),
+  const entry = responsesStrategyRegistry.select(selectedModel)
+  const result = await entry.execute({
+    copilotClient,
+    payload: effectivePayload,
+    upstreamSignal,
     requestContext,
-    signal: upstreamSignal.signal,
-    mapResponse: decorateResponse,
+    vision,
+    initiator,
+    decorateResponse,
     onTerminalResponse: emulatorPrepared
-      ? (terminalResponse) => {
+      ? (terminalResponse: ResponsesResult) => {
           if (!emulatorPrepared?.shouldStore) {
             return
           }
@@ -101,8 +102,6 @@ export async function handleResponsesCore(
         }
       : undefined,
   })
-
-  const result = await runStrategy(strategy, upstreamSignal)
 
   if (
     emulatorPrepared
