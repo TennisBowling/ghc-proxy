@@ -1,15 +1,14 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
-import type { ModelMappingInfo, ModelTransformStep } from '~/lib/request-logger'
+import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
 import consola from 'consola'
 
 import { normalizeAnthropicRequestContext } from '~/core/capi/request-context'
-import { applyModelRewrite, getContextUpgradeTarget, isContextLengthError } from '~/lib/model-rewrite'
-import { applyMessagesModelPolicy } from '~/lib/request-model-policy'
+import { getContextUpgradeTarget, isContextLengthError } from '~/lib/model-rewrite'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseAnthropicMessagesPayload } from '~/lib/validation'
 import { configStore, modelCache } from '~/state'
-import { processAnthropicBetaHeader } from '~/transform/beta-headers'
+import { messagesModelChain, processAnthropicBetaHeader } from '~/transform'
 
 import { defaultStrategyRegistry, selectStrategy } from './strategy-registry'
 
@@ -36,49 +35,46 @@ export async function handleMessagesCore(
   if (consola.level >= 4)
     consola.debug('Anthropic request payload:', JSON.stringify(anthropicPayload))
 
-  // Stage 1: Model rewrite (normalize + user rules)
-  const rewrite = applyModelRewrite(anthropicPayload)
-  const steps: ModelTransformStep[] = []
-  if (rewrite.reason) {
-    steps.push({ tag: rewrite.reason, from: rewrite.originalModel, to: rewrite.model })
-  }
-
-  // Stage 2: Beta header processing (context-1m upgrade + filter)
+  // Parse beta headers for both the transform chain and strategy context
   const betaResult = processAnthropicBetaHeader(
     headers.get('anthropic-beta'),
     anthropicPayload.model,
   )
-  if (betaResult.upgradeTarget) {
-    consola.debug(`Beta header context upgrade: ${anthropicPayload.model} → ${betaResult.upgradeTarget}`)
-    steps.push({ tag: 'BETA_UPGRADE', from: anthropicPayload.model, to: betaResult.upgradeTarget })
-    anthropicPayload.model = betaResult.upgradeTarget
-  }
-
-  // Stage 3: Model policy (skip proactive context upgrade if already upgraded by beta)
   const anthropicBetaHeader = betaResult.header
-  const modelRouting = applyMessagesModelPolicy(
-    anthropicPayload,
-    { betaUpgraded: !!betaResult.upgradeTarget },
-  )
-  if (modelRouting.reason === 'context-upgrade') {
-    steps.push({ tag: 'CONTEXT_UPGRADE', from: modelRouting.originalModel, to: modelRouting.routedModel })
-  }
-  else if (modelRouting.reason === 'compact') {
-    steps.push({ tag: 'COMPACT', from: modelRouting.originalModel, to: modelRouting.routedModel })
-  }
+
+  // Run the 3-step model transform chain (rewrite → beta upgrade → policy)
+  const rawBeta = headers.get('anthropic-beta')
+  const betaHeaders = rawBeta ? rawBeta.split(',').map(v => v.trim()).filter(Boolean) : undefined
+  const transformResult = messagesModelChain.apply({
+    model: anthropicPayload.model,
+    payload: anthropicPayload,
+    headers,
+    meta: { betaHeaders },
+  })
+
+  // Apply the final model from the chain
+  anthropicPayload.model = transformResult.model
+  const selectedModel = transformResult.resolvedModel
+
+  const originalModel = transformResult.trace.length > 0
+    ? transformResult.trace[0].from
+    : anthropicPayload.model
   const modelMapping: ModelMappingInfo = {
-    originalModel: rewrite.originalModel,
-    steps,
+    originalModel,
+    steps: transformResult.trace.map(r => ({
+      tag: r.tag as ModelTransformTag,
+      from: r.from,
+      to: r.to,
+    })),
   }
 
-  if (modelRouting.reason) {
+  if (transformResult.trace.length > 0) {
     consola.debug(
-      `Routed anthropic request via ${modelRouting.reason}:`,
-      `${modelRouting.originalModel} -> ${modelRouting.routedModel}`,
+      `Model transform chain:`,
+      transformResult.trace.map(r => `${r.from}-[${r.tag}]->${r.to}`).join(', '),
     )
   }
 
-  const selectedModel = modelCache.findById(anthropicPayload.model)
   const upstreamSignal = createUpstreamSignalFromConfig(signal)
   const copilotClient = createCopilotClient()
 
@@ -121,8 +117,8 @@ export async function handleMessagesCore(
       selectedModel: retryModel,
       upstreamSignal: retrySignal,
       modelMapping: {
-        originalModel: rewrite.originalModel,
-        steps: [...steps, { tag: 'RETRY_UPGRADE', from: retryFrom, to: upgradeTarget }],
+        originalModel,
+        steps: [...modelMapping.steps, { tag: 'RETRY_UPGRADE', from: retryFrom, to: upgradeTarget }],
       },
     })
   }

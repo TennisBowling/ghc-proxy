@@ -1,5 +1,5 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
-import type { ModelMappingInfo } from '~/lib/request-logger'
+import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
 
 import type { ResponseFunctionTool, ResponsesPayload, ResponsesResult, ResponseTool } from '~/types'
 import consola from 'consola'
@@ -7,11 +7,11 @@ import { normalizeResponsesRequestContext, resolveInitiator } from '~/core/capi/
 import { throwInvalidRequestError } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
 import { normalizeFunctionParametersSchemaForCopilot } from '~/lib/function-schema'
-import { applyModelRewrite } from '~/lib/model-rewrite'
 import { createCopilotClient } from '~/lib/state'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseResponsesPayload } from '~/lib/validation'
 import { configStore, modelCache, RESPONSES_ENDPOINT } from '~/state'
+import { responsesModelChain } from '~/transform'
 
 import { applyContextManagement, compactInputByLatestCompaction, getResponsesRequestOptions } from './context-management'
 import { decorateStoredResponse, persistEmulatorResponse, prepareEmulatorRequest } from './emulator'
@@ -43,10 +43,11 @@ export async function handleResponsesCore(
     ? prepareEmulatorRequest(payload)
     : undefined
 
-  // Model rewrite (normalize + user rules)
-  const rewrite = applyModelRewrite(emulatorPrepared?.upstreamPayload ?? payload)
-
   const effectivePayload = emulatorPrepared?.upstreamPayload ?? payload
+
+  // Run model transform chain (rewrite step)
+  const transformResult = responsesModelChain.apply({ model: effectivePayload.model, payload: effectivePayload, headers })
+  effectivePayload.model = transformResult.model
 
   applyResponsesToolTransforms(effectivePayload)
   applyResponsesInputPolicies(effectivePayload)
@@ -114,9 +115,10 @@ export async function handleResponsesCore(
     result.data = emulatedResponse
   }
 
+  const originalModel = transformResult.trace.length > 0 ? transformResult.trace[0].from : effectivePayload.model
   const modelMapping: ModelMappingInfo = {
-    originalModel: rewrite.originalModel,
-    steps: rewrite.reason ? [{ tag: rewrite.reason, from: rewrite.originalModel, to: rewrite.model }] : [],
+    originalModel,
+    steps: transformResult.trace.map(r => ({ tag: r.tag as ModelTransformTag, from: r.from, to: r.to })),
   }
 
   return { result, modelMapping }

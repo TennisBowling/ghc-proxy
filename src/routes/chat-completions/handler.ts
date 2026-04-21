@@ -1,17 +1,17 @@
 import type { ExecutionResult } from '~/lib/execution-strategy'
-import type { ModelMappingInfo, ModelTransformStep } from '~/lib/request-logger'
+import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
 
 import consola from 'consola'
 import { CopilotTransport, OpenAIChatAdapter } from '~/adapters'
 import { normalizeChatRequestContext } from '~/core/capi/request-context'
 import { runStrategy } from '~/lib/execution-strategy'
-import { applyModelRewrite } from '~/lib/model-rewrite'
 import { appendModelStep } from '~/lib/request-logger'
 import { createCopilotClient } from '~/lib/state'
 import { getTokenCount } from '~/lib/tokenizer'
 import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import { parseOpenAIChatPayload } from '~/lib/validation'
 import { modelCache } from '~/state'
+import { chatCompletionsModelChain } from '~/transform'
 
 import { createChatCompletionsStrategy } from './strategy'
 
@@ -37,12 +37,9 @@ export async function handleCompletionCore(
   const requestContext = normalizeChatRequestContext(payload, headers)
   consola.debug('Request payload:', JSON.stringify(payload).slice(-400))
 
-  // Model rewrite (normalize + user rules)
-  const rewrite = applyModelRewrite(payload)
-  const steps: ModelTransformStep[] = []
-  if (rewrite.reason) {
-    steps.push({ tag: rewrite.reason, from: rewrite.originalModel, to: rewrite.model })
-  }
+  // Run model transform chain (rewrite step)
+  const transformResult = chatCompletionsModelChain.apply({ model: payload.model, payload, headers })
+  payload.model = transformResult.model
 
   const selectedModel = modelCache.findById(payload.model)
 
@@ -73,8 +70,9 @@ export async function handleCompletionCore(
     requestContext,
   })
 
+  const originalModel = transformResult.trace.length > 0 ? transformResult.trace[0].from : payload.model
   const modelMapping = appendModelStep(
-    { originalModel: rewrite.originalModel, steps },
+    { originalModel, steps: transformResult.trace.map(r => ({ tag: r.tag as ModelTransformTag, from: r.from, to: r.to })) },
     'MODEL_RESOLVE',
     plan.resolvedModel,
   )
