@@ -26,6 +26,13 @@ src/
 ├── core/                      # Core domain logic
 │   ├── capi/                  # Copilot API abstraction layer
 │   └── conversation/          # Conversation intermediate model
+├── state/                     # Decomposed state stores
+├── pipeline/                  # Pipeline runner and framework types
+├── ingest/                    # Protocol registry (parse + validate)
+├── transform/                 # Composable model transform chain + sanitizers
+├── dispatch/                  # Strategy registry + ResourceDispatcher
+├── deliver/                   # Response delivery + error utilities
+├── guard/                     # Request auth + rate limiting guard
 ├── lib/                       # Shared utilities
 └── types/                     # TypeScript type definitions
 ```
@@ -39,7 +46,7 @@ Each route directory follows a consistent pattern:
 ```text
 routes/<endpoint>/
 ├── route.ts        # Elysia route definition
-├── handler.ts      # Request parsing, validation, strategy dispatch
+├── handler.ts      # Orchestration via runPipeline() (ingest, transform, dispatch)
 └── strategy.ts     # ExecutionStrategy implementation(s)
 ```
 
@@ -48,7 +55,7 @@ The messages route is more complex because it has three execution strategies:
 ```text
 routes/messages/
 ├── route.ts
-├── handler.ts                      # Model routing, policy checks
+├── handler.ts                      # runPipeline() orchestration with afterIngest/afterTransform hooks
 ├── count-tokens-handler.ts         # Token counting sub-handler
 └── strategies/
     ├── native-messages.ts          # Direct /v1/messages passthrough
@@ -190,20 +197,20 @@ ConversationRequest
 ```text
 src/
 ├── state/           # Decomposed state stores (replaced global AppState)
-├── pipeline/        # Pipeline framework types (StrategyContext, ModelTransformResult)
+├── pipeline/        # Pipeline runner (runPipeline) and framework types
 ├── ingest/          # Protocol registry (parse + validate per protocol)
-├── transform/       # Composable model transform chain
+├── transform/       # Composable model transform chain + payload sanitizers
 ├── dispatch/        # Strategy registry + ResourceDispatcher
-├── translate/       # Translator traits, registry, shared mapping tables
 ├── deliver/         # Response delivery + error utilities
 └── guard/           # Request auth + rate limiting guard
 ```
 
 These layers co-exist with the original `src/lib/` and `src/routes/` structure. The new layers provide:
 
+- **A generic pipeline runner** — `src/pipeline/runner.ts` exports `runPipeline()`, which wraps the three core stages (Ingest→Transform→Dispatch) with lifecycle hooks (`afterIngest`, `afterTransform`) and config-driven `contextRetry`. Guard is applied separately as an Elysia plugin, and Deliver happens after `runPipeline()` returns. Route handlers call `runPipeline()` instead of orchestrating each stage manually.
 - **Composable alternatives to inline handler logic** — logic that was previously duplicated across route handlers is extracted into named, testable pipeline steps.
 - **Registries instead of hardcoded switch/if-else** — `src/ingest/` and `src/dispatch/` use registry patterns so new protocols and strategies can be added without touching existing handler code.
-- **Decomposed state instead of the global AppState object** — `src/state/` splits the monolithic `AppState` into focused stores (`AuthStore`, `ModelCache`, `ConfigStore`, `RateLimiter`, `EmulatorStore`), each with a single responsibility and a typed query interface.
+- **Decomposed state instead of the global AppState object** — `src/state/` splits the monolithic `AppState` into focused stores (`AuthStore`, `ModelCache`, `ConfigStore`, `RateLimiter`, `EmulatorStore`), each with a single responsibility. `ConfigStore` consolidates scattered `shouldUse*()` config getter functions into a typed class with semantic query methods (e.g., `isEmulatorEnabled()`, `isContextUpgradeEnabled()`, `getReasoningEffort()`).
 
 ## Test Coverage Layout
 

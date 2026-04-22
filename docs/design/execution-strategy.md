@@ -124,9 +124,93 @@ Passes OpenAI Responses format through to Copilot:
 - Rewrites `apply_patch` custom tools if enabled
 - Forwards response events with minimal transformation
 
+## Pipeline Runner: `runPipeline()`
+
+Route handlers used to manually orchestrate parsing, model transformation, strategy selection, and error recovery inline (~70 lines of boilerplate per handler). The `runPipeline()` function (`src/pipeline/runner.ts`) extracts this into a generic orchestrator.
+
+### Signature
+
+```typescript
+async function runPipeline<TPayload, TStrategyCtx>(
+  params: PipelineParams,
+  config: PipelineConfig<TPayload, TStrategyCtx>,
+): Promise<PipelineResult>
+```
+
+The two type parameters let each route keep its own payload and strategy context types while sharing the same lifecycle.
+
+### Lifecycle
+
+`runPipeline` executes the Ingest -> Transform -> Dispatch stages in order:
+
+1. **Ingest** -- calls `protocolRegistry.ingest()` for the configured protocol ID, producing a validated `payload` and `RequestMeta`.
+2. **afterIngest hook** (optional) -- runs immediately after parsing. Routes use this for debug logging or header pre-processing (e.g., the messages handler extracts the `anthropic-beta` header here).
+3. **Transform** -- applies the route's `ModelTransformChain`, updating the payload model and building a `ModelMappingInfo` trace for request logging.
+4. **afterTransform hook** (optional) -- runs after model transformation. The chat-completions handler uses this to calculate token counts and set `max_tokens` defaults.
+5. **Dispatch** -- creates a `CopilotClient` and upstream signal, builds the strategy context via `buildStrategyContext()`, selects the strategy from the `StrategyRegistry`, and executes it.
+
+### Configuration
+
+```typescript
+interface PipelineConfig<TPayload, TStrategyCtx> {
+  protocol: ProtocolId
+  transformChain: ModelTransformChain
+  strategyRegistry: StrategyRegistry<TStrategyCtx>
+  buildStrategyContext: (ctx: BuildStrategyContextParams) => TStrategyCtx
+  contextRetry?: boolean
+  afterIngest?: (ctx: IngestContext<TPayload>) => void
+  afterTransform?: (ctx: TransformContext<TPayload>) => void | Promise<void>
+}
+```
+
+Each route provides its own protocol ID, transform chain, strategy registry, and a `buildStrategyContext` function that maps the generic pipeline state into the route-specific strategy context type. The lifecycle hooks let routes inject route-specific logic at well-defined points without forking the pipeline.
+
+### Route Handler Integration
+
+With `runPipeline`, route handlers become thin configuration objects. For example, the messages handler (`src/routes/messages/handler.ts`) is ~45 lines that configure the pipeline and return its result:
+
+```typescript
+export async function handleMessagesCore({ body, signal, headers }) {
+  let anthropicBetaHeader: string | undefined
+  return runPipeline<AnthropicMessagesPayload, MessagesStrategyContext>(
+    { body, signal, headers },
+    {
+      protocol: 'anthropic-messages',
+      transformChain: messagesModelChain,
+      strategyRegistry: defaultStrategyRegistry,
+      contextRetry: true,
+      afterIngest({ payload, headers }) { /* extract beta header */ },
+      buildStrategyContext(ctx) { /* map to MessagesStrategyContext */ },
+    },
+  )
+}
+```
+
+The chat-completions handler follows the same pattern, adding an `afterTransform` hook for token counting. The responses handler still orchestrates stages manually because it has additional emulator-mode logic (store decoration, input compaction) that doesn't fit the linear pipeline model.
+
+### Context Retry Integration
+
+When `contextRetry: true` is set in the pipeline config, `runPipeline` delegates execution to `executeWithContextRetry()` (`src/dispatch/error-recovery.ts`) instead of calling the strategy directly.
+
+`executeWithContextRetry` catches context-length errors from the upstream and, if a context upgrade target exists (e.g., upgrading a base model to its larger-context variant), retries with the upgraded model:
+
+```typescript
+async function executeWithContextRetry(
+  executeFn: (model: string) => Promise<ExecutionResult>,
+  modelInfo: ModelTransformResult,
+): Promise<ExecutionResult>
+```
+
+Key implementation details:
+
+- **Model mapping reset on retry** -- when retrying, `runPipeline` creates a fresh copy of the model mapping steps (`{ originalModel, steps: [...modelMapping.steps] }`) for the retry attempt. If the retry succeeds, the retry's steps are written back to the canonical mapping. This prevents stale transform steps from the failed attempt accumulating in the trace.
+- **Signal cleanup on retry** -- a retry creates a fresh upstream signal via `createUpstreamSignalFromConfig(params.signal)` rather than reusing the original. This avoids leaking the abort listener from the failed attempt's signal, which would otherwise remain registered on the client signal indefinitely.
+- **Config-driven enablement** -- the retry is gated on `configStore.isContextUpgradeEnabled()`, so it can be disabled at runtime without changing route code.
+
 ## Benefits
 
 1. **DRY streaming logic** -- SSE write loop, error recovery, signal cleanup written once
 2. **Testable strategies** -- Each strategy can be tested by calling its methods directly
 3. **Consistent error handling** -- All paths emit protocol-level error events on failure
 4. **Easy to add new paths** -- Implement the interface, pass to `executeStrategy()`
+5. **DRY pipeline orchestration** -- `runPipeline()` eliminates repeated Ingest/Transform/Dispatch boilerplate across route handlers

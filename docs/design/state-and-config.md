@@ -66,6 +66,34 @@ interface RateLimitState {
 }
 ```
 
+### ConfigStore (`src/state/config-store.ts`)
+
+`ConfigStore` is a typed singleton class that provides a centralized query interface for all feature flags and configuration values derived from the config file. Instead of scattered standalone getter functions (e.g. `shouldUseNativeMessages()`, `shouldUseResponsesApi()`), all config queries go through the `configStore` singleton:
+
+```typescript
+import { configStore } from '~/state'
+
+configStore.isEmulatorEnabled() // responsesOfficialEmulator
+configStore.getEmulatorTtlSeconds() // responsesOfficialEmulatorTtlSeconds
+configStore.isContextUpgradeEnabled() // contextUpgrade
+configStore.getContextUpgradeThreshold() // contextUpgradeTokenThreshold
+configStore.isCompactSmallModelEnabled() // compactUseSmallModel
+configStore.getSmallModel() // smallModel
+configStore.isFunctionApplyPatchEnabled() // useFunctionApplyPatch
+configStore.isAutoCompactResponsesInputEnabled() // responsesApiAutoCompactInput
+configStore.isContextManagementEnabled() // responsesApiAutoContextManagement
+configStore.isContextManagementModel(model) // responsesApiContextManagementModels
+configStore.getReasoningEffort(model) // modelReasoningEfforts
+configStore.getModelRewrites() // modelRewrites
+configStore.getModelFallback() // modelFallback
+configStore.getUpstreamQueueConcurrency() // upstreamQueueConcurrency
+configStore.getUpstreamQueueMaxRetries() // upstreamQueueMaxRetries
+configStore.getUpstreamQueueBaseDelaySeconds() // upstreamQueueBaseDelaySeconds
+configStore.getUpstreamQueueMaxDelaySeconds() // upstreamQueueMaxDelaySeconds
+```
+
+Each method reads from `getCachedConfig()` and applies the appropriate default value. This consolidates 10+ config access patterns into a single, discoverable interface and eliminates the risk of inconsistent default handling across call sites.
+
 ## Configuration File (`~/.ghc-proxy/config.json`)
 
 Read once at startup via `getCachedConfig()`:
@@ -172,6 +200,18 @@ The Responses official emulator is disabled by default. When `responsesOfficialE
 - `GET /v1/responses/:id`, `GET /v1/responses/:id/input_items`, `DELETE /v1/responses/:id`, and `POST /v1/responses/input_tokens` switch from passthrough to local emulator behavior
 - state expires after `responsesOfficialEmulatorTtlSeconds` seconds (default `14400`, or 4 hours)
 - `background: true` is explicitly unsupported in emulator mode
+
+### Memory Management
+
+The emulator state is stored across seven internal maps (responses, conversations, conversation heads, input items, and three deletion flag maps). Without bounds, these can grow unboundedly -- a single `setResponse()` call may write up to 3 entries (response, conversation, conversation head), and deletion methods add deletion flag entries.
+
+To prevent unbounded growth, the emulator enforces a hard cap of 10,000 total entries (`DEFAULT_MAX_TOTAL_ENTRIES`, overridable via `maxTotalEntries` option) across all maps. Memory is managed at two layers:
+
+**Write-time enforcement (`enforceCapOnWrite`):** Called automatically by `writeMap()` and `putDeletionFlag()` before inserting a new key. When the total entry count reaches the cap:
+1. Expired entries are pruned first
+2. If still at or over the cap, the oldest entry (by expiration time) is evicted from the largest map in a loop until space is available
+
+**Background sweep:** A `setInterval` timer runs `pruneExpired()` every 60 seconds to remove entries that have passed their TTL. The timer is `unref()`'d so it does not prevent process exit.
 
 ## Rate Limiting
 

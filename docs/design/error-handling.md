@@ -195,6 +195,55 @@ Request arrives
 Client Response
 ```
 
+## Health Check
+
+`GET /health` returns a lightweight status object for operational monitoring:
+
+```json
+{
+  "status": "ok",
+  "copilotToken": true,
+  "modelsLoaded": true,
+  "version": "0.6.0"
+}
+```
+
+`copilotToken` and `modelsLoaded` are booleans indicating whether the proxy has a valid Copilot token and a cached model list, respectively.
+
+## Resource Limit Protections
+
+### Upstream Queue Depth
+
+`UpstreamRequestQueue` enforces a maximum queue depth of **1,000 pending waiters** (configurable via `maxQueueDepth`). When the queue is full, new requests are immediately rejected with HTTP 503:
+
+```json
+{
+  "error": { "message": "Upstream queue full", "type": "overloaded_error" }
+}
+```
+
+This prevents unbounded memory growth under sustained load. See [Upstream Request Queue](upstream-request-queue.md) for the full back-pressure design.
+
+### Emulator Memory Cap
+
+The Responses emulator state store enforces a hard cap of **10,000 total entries** (across responses, conversations, conversation heads, input items, and deletion flags). The cap is enforced at the write layer: every new-key write calls `enforceCapOnWrite()`, which first prunes expired entries, then evicts the oldest entry from the largest map until the count drops below the limit. A background prune interval (60 s) also garbage-collects expired entries independently of writes.
+
+## Signal and Resource Cleanup
+
+### AbortSignal Cleanup on Strategy Errors
+
+`runStrategy()` in `src/lib/execution-strategy.ts` ensures the abort signal is cleaned up when `execute()` throws. If the strategy's `execute()` call fails, `signal.cleanup()` is called before re-throwing, preventing signal leaks on error paths. For non-streaming results, cleanup happens immediately after translation. For streaming results, cleanup is deferred to the `finally` block of the SSE generator so the signal remains live for the duration of the stream.
+
+### Graceful Shutdown
+
+The server registers `SIGTERM` and `SIGINT` handlers in `src/start.ts`. On either signal, the shutdown sequence:
+
+1. Calls `tokenCleanup()` to stop the Copilot token refresh interval
+2. Calls `app.stop()` to close the HTTP server
+3. Exits with code 0
+
+This ensures no orphaned timers or dangling connections survive a clean shutdown.
+
 ## Compatibility Normalization
 
 Validation and request shaping also preserve the public API contract when Copilot upstream differs from the exposed schema. Example: `POST /v1/embeddings` accepts OpenAI-compatible single-string input, then normalizes it to a one-element array before the upstream call.

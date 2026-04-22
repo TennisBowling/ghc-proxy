@@ -59,7 +59,7 @@ Guard → Ingest → Transform → Dispatch → Deliver
 1. **Guard** (`src/guard/`) — Auth check and rate limiting, applied as an Elysia plugin.
 2. **Ingest** (`src/ingest/`) — Protocol-specific parsing, Zod validation, and metadata extraction via `ProtocolRegistry`.
 3. **Transform** (`src/transform/`) — Composable model transform chain (rewrite, beta-header processing, model policy). Messages route uses a 3-step chain; chat-completions and responses use single-step variants.
-4. **Dispatch** (`src/dispatch/`) — Strategy selection via `StrategyRegistry`, execution, and error recovery (context-length retry with model upgrade). Messages route has 3 strategies; chat-completions and responses use single-strategy registries.
+4. **Dispatch** (`src/dispatch/`) — Strategy selection via `StrategyRegistry`, execution, and config-driven error recovery (context-length retry with model upgrade). Messages route has 3 strategies; chat-completions and responses use single-strategy registries.
 5. **Deliver** (`src/deliver/`) — Converts `ExecutionResult` into the HTTP response (SSE streaming or JSON serialization, error formatting, model mapping).
 
 ### Route File Pattern
@@ -89,11 +89,10 @@ Messages route is more complex with multiple strategies in `strategies/` subdire
 | `src/lib/` | Utilities (state, config, tokens, errors, model resolution, rate limiting, validation) |
 | `src/types/` | TypeScript type definitions |
 | `src/state/` | Decomposed state stores (AuthStore, ModelCache, ConfigStore, RateLimiter, EmulatorStore) |
-| `src/pipeline/` | Pipeline framework (StrategyContext, ModelTransformResult types) |
+| `src/pipeline/` | Pipeline framework: `runPipeline()` orchestrator with lifecycle hooks, StrategyContext and ModelTransformResult types |
 | `src/ingest/` | Protocol registry with per-protocol parsers and validators |
 | `src/transform/` | Composable model transform chain (rewrite, beta-headers, policy steps) |
 | `src/dispatch/` | Strategy registry, strategy runner, error recovery, ResourceDispatcher |
-| `src/translate/` | Translator traits, registry, and shared mapping utilities |
 | `src/deliver/` | Response delivery (SSE, JSON, error formatting, shared utilities) |
 | `src/guard/` | Request guard (auth check, rate limiting) |
 

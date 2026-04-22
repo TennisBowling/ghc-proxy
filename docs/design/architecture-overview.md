@@ -97,6 +97,18 @@ Client Response (OpenAI / Anthropic format)
 | `GET  /models`            | OpenAI     | List available models (alias)          |
 | `POST /token`             | Internal   | Token management                       |
 | `GET  /usage`             | Internal   | Copilot usage statistics               |
+| `GET  /health`            | Internal   | Health check (`status`, `copilotToken`, `modelsLoaded`, `version`) |
+
+## Pipeline Runner
+
+Route handlers delegate to `runPipeline()` (`src/pipeline/runner.ts`), a generic orchestrator that wraps the three core pipeline stages (Ingest → Transform → Dispatch) into a single call. Guard is applied separately as an Elysia plugin at the route level, and Deliver (response serialization) happens after `runPipeline()` returns its result. Instead of each route manually invoking every stage, `runPipeline()` accepts a `PipelineConfig` that declaratively describes:
+
+- **Protocol, transform chain, and strategy registry** — which protocol to parse, which model transforms to apply, and which execution strategies to select from.
+- **Lifecycle hooks** — `afterIngest()` runs immediately after protocol parsing and validation (e.g., to normalize headers or extract subagent markers), and `afterTransform()` runs after the model transform chain (e.g., to apply beta-header side-effects on the final payload).
+- **Context retry** — when `contextRetry` is enabled, the runner wraps dispatch in `executeWithContextRetry()`, which catches context-length errors and automatically retries with an upgraded model while preserving the full model-mapping trace.
+- **Strategy context builder** — a `buildStrategyContext()` callback that constructs the strategy-specific context from the parsed payload, resolved model, Copilot client, and upstream signal.
+
+Route handlers like messages and chat-completions supply their own config objects and call `runPipeline()`, keeping handler code focused on route-specific concerns rather than pipeline plumbing.
 
 ## Design Principles
 
@@ -139,3 +151,18 @@ Token usage follows a **passthrough architecture**: Copilot's upstream API retur
 | Native Messages | Anthropic `usage` | None (passthrough) | Included natively |
 
 The `gpt-tokenizer` library is used **only** for the `count_tokens` endpoint, which provides local pre-flight estimation. It applies model-specific correction factors (1.15x for Claude) because GPT tokenizers produce different counts than Claude's tokenizer. See [Copilot Token Usage](../research/copilot-token-usage.md) for full details.
+
+## Operational Features
+
+### Request Correlation ID
+
+Every request is assigned an `x-request-id`. If the client supplies one in the request headers, the proxy preserves it; otherwise a random UUID is generated via `crypto.randomUUID()`. The ID is attached to the response headers and included in structured request logs.
+
+### Graceful Shutdown
+
+The server registers `SIGTERM` and `SIGINT` handlers (`src/start.ts`). On signal receipt the shutdown sequence stops the Copilot token refresh timer, calls `app.stop()` to drain in-flight connections, and exits cleanly.
+
+### Resource Limits
+
+- **Emulator memory cap** — The responses emulator store (`src/lib/responses-emulator-state.ts`) enforces a hard cap of 10,000 total entries across all maps (responses, conversations, conversation heads, input items, deletion flags). When a write would exceed the cap, expired entries are pruned first; if still over capacity, the oldest entry in the largest map is evicted. A background sweep runs every 60 seconds to remove expired entries proactively.
+- **Upstream queue depth** — The upstream request queue (`src/lib/upstream-request-queue.ts`) limits pending waiters to 1,000. When the queue is full, new requests are immediately rejected with a `503 overloaded_error` response rather than blocking indefinitely.

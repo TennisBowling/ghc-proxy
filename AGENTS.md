@@ -85,11 +85,10 @@ Guard → Ingest → Transform → Dispatch → Deliver
 | `src/lib/` | Utilities (state, config, tokens, errors, model resolution, rate limiting, validation) |
 | `src/types/` | TypeScript type definitions |
 | `src/state/` | Decomposed state stores (AuthStore, ModelCache, ConfigStore, RateLimiter, EmulatorStore) |
-| `src/pipeline/` | Pipeline framework (StrategyContext, ModelTransformResult types) |
+| `src/pipeline/` | Pipeline framework: `runPipeline()` orchestrator with lifecycle hooks, StrategyContext and ModelTransformResult types |
 | `src/ingest/` | Protocol registry with per-protocol parsers and validators |
 | `src/transform/` | Composable model transform chain (rewrite, beta-headers, policy steps) |
 | `src/dispatch/` | Strategy registry, strategy runner, error recovery, ResourceDispatcher |
-| `src/translate/` | Translator traits, registry, and shared mapping utilities |
 | `src/deliver/` | Response delivery (SSE, JSON, error formatting, shared utilities) |
 | `src/guard/` | Request guard (auth check, rate limiting) |
 
