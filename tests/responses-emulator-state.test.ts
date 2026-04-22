@@ -102,6 +102,56 @@ describe('responses emulator state', () => {
     })
   })
 
+  test('enforces memory cap across multi-entry setResponse writes', () => {
+    const state = createResponsesEmulatorState({ maxTotalEntries: 10 })
+
+    for (let i = 0; i < 20; i++) {
+      state.setResponse(buildResponsesResult({
+        id: `resp_${i}`,
+        conversation: { id: `conv_${i}` },
+      }))
+    }
+
+    expect(state.totalEntries()).toBeLessThanOrEqual(10)
+  })
+
+  test('enforces memory cap when deletion flags are added', () => {
+    const state = createResponsesEmulatorState({ maxTotalEntries: 10 })
+
+    for (let i = 0; i < 5; i++) {
+      state.setResponse(buildResponsesResult({
+        id: `resp_${i}`,
+        conversation: { id: `conv_${i}` },
+      }))
+    }
+
+    for (let i = 0; i < 20; i++) {
+      state.deleteResponse(`resp_del_${i}`)
+    }
+
+    expect(state.totalEntries()).toBeLessThanOrEqual(10)
+  })
+
+  test('skips cap enforcement for key updates that do not grow entry count', () => {
+    const state = createResponsesEmulatorState({ maxTotalEntries: 6 })
+
+    for (let i = 0; i < 2; i++) {
+      state.setResponse(buildResponsesResult({
+        id: `resp_${i}`,
+        conversation: { id: `conv_${i}` },
+      }))
+    }
+
+    const beforeUpdate = state.totalEntries()
+
+    state.setResponse(buildResponsesResult({
+      id: 'resp_0',
+      conversation: { id: 'conv_0' },
+    }))
+
+    expect(state.totalEntries()).toBe(beforeUpdate)
+  })
+
   test('keeps separate instances isolated and clearable', () => {
     const first = createResponsesEmulatorState()
     const second = createResponsesEmulatorState()

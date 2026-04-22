@@ -164,6 +164,8 @@ export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): R
     ttlSeconds?: number,
     at = currentTime(),
   ): T {
+    if (!map.has(key))
+      enforceCapOnWrite()
     const cloned = cloneValue(value)
     map.set(key, {
       expiresAt: toExpiresAt(ttlSeconds, at),
@@ -185,6 +187,8 @@ export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): R
     ttlSeconds?: number,
     at = currentTime(),
   ): ResponsesEmulatorDeletionFlag {
+    if (!map.has(id))
+      enforceCapOnWrite()
     const flag: ResponsesEmulatorDeletionFlag = {
       deleted: true,
       deletedAt: at,
@@ -264,8 +268,11 @@ export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): R
     if (totalEntries() < maxTotalEntries)
       return
     pruneExpiredRecords()
-    if (totalEntries() >= maxTotalEntries) {
+    while (totalEntries() >= maxTotalEntries) {
+      const sizeBefore = totalEntries()
       evictOldestFromLargestMap()
+      if (totalEntries() >= sizeBefore)
+        break
     }
   }
 
@@ -311,7 +318,6 @@ export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): R
     },
 
     setResponse(response, options) {
-      enforceCapOnWrite()
       removeDeletionFlag(responseDeletionFlags, response.id)
       if (response.conversation !== undefined && response.conversation !== null) {
         const conversationId = responseKeyFromConversation(response.conversation)
@@ -351,7 +357,6 @@ export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): R
     },
 
     setConversation(conversation, options) {
-      enforceCapOnWrite()
       const conversationId = responseKeyFromConversation(conversation)
       removeDeletionFlag(conversationDeletionFlags, conversationId)
       return writeMap(conversationRecords, conversationId, conversation, options?.ttlSeconds)
@@ -377,7 +382,6 @@ export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): R
     },
 
     setConversationHead(conversationId, responseId, options) {
-      enforceCapOnWrite()
       return writeMap(conversationHeadRecords, conversationId, responseId, options?.ttlSeconds)
     },
 
@@ -390,7 +394,6 @@ export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): R
     },
 
     setInputItems(responseId, inputItems, options) {
-      enforceCapOnWrite()
       removeDeletionFlag(inputItemDeletionFlags, responseId)
       return writeMap(inputItemRecords, responseId, inputItems, options?.ttlSeconds)
     },
@@ -414,7 +417,6 @@ export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): R
     },
 
     setDeletionFlag(kind, id, options) {
-      enforceCapOnWrite()
       return putDeletionFlag(deletionMap(kind), id, options?.ttlSeconds)
     },
 
