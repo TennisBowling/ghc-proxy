@@ -9,6 +9,12 @@ export { composeModelTransforms } from './chain'
 export type { ModelTransformChain } from './chain'
 export { modelPolicyStep } from './policy'
 export { rewriteStep } from './rewrite'
+export {
+  filterThinkingBlocksForNativeMessages,
+  normalizeOutputConfigEffort,
+  sanitizeCacheControl,
+  sanitizeOutputConfig,
+} from './sanitize'
 export type { ModelTransformInput, ModelTransformOutput, ModelTransformStep } from './types'
 
 export const messagesModelChain = composeModelTransforms(

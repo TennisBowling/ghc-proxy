@@ -1,0 +1,152 @@
+import type { CopilotClient } from '~/clients'
+import type { StrategyRegistry } from '~/dispatch'
+import type { ProtocolId, RequestMeta } from '~/ingest'
+import type { ExecutionResult } from '~/lib/execution-strategy'
+import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
+import type { ModelTransformResult } from '~/pipeline/types'
+import type { ModelTransformChain } from '~/transform'
+import type { Model } from '~/types'
+
+import { executeWithContextRetry } from '~/dispatch/error-recovery'
+import { protocolRegistry } from '~/ingest'
+import { createCopilotClient } from '~/lib/state'
+import { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
+import { modelCache } from '~/state'
+
+export interface PipelineParams {
+  body: unknown
+  signal: AbortSignal
+  headers: Headers
+}
+
+export interface PipelineResult {
+  result: ExecutionResult
+  modelMapping: ModelMappingInfo
+}
+
+export interface IngestContext<TPayload> {
+  payload: TPayload
+  meta: RequestMeta
+  headers: Headers
+}
+
+export interface TransformContext<TPayload> {
+  payload: TPayload
+  meta: RequestMeta
+  headers: Headers
+  transformResult: ModelTransformResult
+  selectedModel: Model | undefined
+}
+
+export interface PipelineConfig<TPayload, TStrategyCtx> {
+  protocol: ProtocolId
+  transformChain: ModelTransformChain
+  strategyRegistry: StrategyRegistry<TStrategyCtx>
+  buildStrategyContext: (ctx: {
+    payload: TPayload
+    meta: RequestMeta
+    headers: Headers
+    selectedModel: Model | undefined
+    copilotClient: CopilotClient
+    upstreamSignal: ReturnType<typeof createUpstreamSignalFromConfig>
+    modelMapping: ModelMappingInfo
+  }) => TStrategyCtx
+  contextRetry?: boolean
+  afterIngest?: (ctx: IngestContext<TPayload>) => void
+  afterTransform?: (ctx: TransformContext<TPayload>) => void | Promise<void>
+}
+
+export async function runPipeline<TPayload, TStrategyCtx>(
+  params: PipelineParams,
+  config: PipelineConfig<TPayload, TStrategyCtx>,
+): Promise<PipelineResult> {
+  const { payload, meta } = protocolRegistry.ingest<TPayload>(
+    config.protocol,
+    params.body,
+    params.headers,
+  )
+
+  config.afterIngest?.({ payload, meta, headers: params.headers })
+
+  const transformResult = config.transformChain.apply({
+    model: (payload as Record<string, string>).model,
+    payload,
+    headers: params.headers,
+    meta: { betaHeaders: meta.betaHeaders },
+  })
+
+  ;(payload as Record<string, string>).model = transformResult.model
+  const selectedModel = transformResult.resolvedModel
+
+  const originalModel = transformResult.trace.length > 0
+    ? transformResult.trace[0].from
+    : (payload as Record<string, string>).model
+  const modelMapping: ModelMappingInfo = {
+    originalModel,
+    steps: transformResult.trace.map(r => ({
+      tag: r.tag as ModelTransformTag,
+      from: r.from,
+      to: r.to,
+    })),
+  }
+
+  if (config.afterTransform) {
+    await config.afterTransform({ payload, meta, headers: params.headers, transformResult, selectedModel })
+  }
+
+  const upstreamSignal = createUpstreamSignalFromConfig(params.signal)
+  const copilotClient = createCopilotClient()
+
+  const buildCtx = () => config.buildStrategyContext({
+    payload,
+    meta,
+    headers: params.headers,
+    selectedModel,
+    copilotClient,
+    upstreamSignal,
+    modelMapping,
+  })
+
+  if (config.contextRetry) {
+    const result = await executeWithContextRetry(
+      async (model) => {
+        const isRetry = model !== (payload as Record<string, string>).model
+        const currentMapping = isRetry
+          ? { originalModel: modelMapping.originalModel, steps: [...modelMapping.steps] }
+          : modelMapping
+        const effectivePayload = isRetry
+          ? { ...payload, model } as TPayload
+          : payload
+        const currentModel = isRetry
+          ? modelCache.findById(model)
+          : selectedModel
+
+        const ctx = config.buildStrategyContext({
+          payload: effectivePayload,
+          meta,
+          headers: params.headers,
+          selectedModel: currentModel,
+          copilotClient,
+          upstreamSignal: isRetry ? createUpstreamSignalFromConfig(params.signal) : upstreamSignal,
+          modelMapping: currentMapping,
+        })
+
+        const entry = config.strategyRegistry.select(currentModel)
+        const entryResult = await entry.execute(ctx)
+
+        if (isRetry) {
+          modelMapping.steps = currentMapping.steps
+        }
+        return entryResult
+      },
+      { model: (payload as Record<string, string>).model, trace: modelMapping.steps.map(s => ({ tag: s.tag, from: s.from, to: s.to })) },
+    )
+    return { result, modelMapping }
+  }
+
+  const ctx = buildCtx()
+  const entry = config.strategyRegistry.select(selectedModel)
+  const result = await entry.execute(ctx)
+
+  return { result, modelMapping }
+}

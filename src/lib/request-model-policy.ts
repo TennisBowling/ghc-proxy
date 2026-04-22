@@ -2,8 +2,6 @@ import type { AnthropicMessagesPayload } from '~/translator'
 import type { Model } from '~/types'
 
 import { configStore, modelCache } from '~/state'
-
-import { getSmallModel, shouldCompactUseSmallModel } from './config'
 import {
   modelSupportsAdaptiveThinking,
   modelSupportsToolCalls,
@@ -46,8 +44,8 @@ export function applyMessagesModelPolicy(
   }
 
   // Small-model routing (compact) requires a configured smallModel and enabled flag.
-  const smallModel = getSmallModel()
-  if (!smallModel || !shouldCompactUseSmallModel() || !isCompactRequest(payload)) {
+  const smallModel = configStore.getSmallModel()
+  if (!smallModel || !configStore.isCompactSmallModelEnabled() || !isCompactRequest(payload)) {
     return { originalModel, routedModel: originalModel }
   }
 

@@ -2,8 +2,7 @@ import type { ModelTransformStep } from './types'
 
 import { getContextUpgradeTarget } from '~/lib/model-rewrite'
 import { configStore } from '~/state'
-
-const CONTEXT_BETA_RE = /^context-\d+[km]-/
+import { CONTEXT_BETA_RE } from './constants'
 
 export interface BetaHeaderResult {
   header: string | undefined

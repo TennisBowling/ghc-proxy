@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import type { RuntimeConfig } from './lib/state'
+import process from 'node:process'
 import { defineCommand } from 'citty'
 import consola from 'consola'
 
@@ -151,7 +152,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     await setupGitHubToken()
   }
 
-  await setupCopilotToken()
+  const tokenCleanup = await setupCopilotToken()
 
   const copilotClient = createCopilotClient()
   await cacheModels(copilotClient)
@@ -169,6 +170,16 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   const app = createServer({ idleTimeout: options.idleTimeoutSeconds })
   app.listen(options.port)
+
+  const shutdown = async () => {
+    consola.info('Shutting down gracefully...')
+    tokenCleanup()
+    await app.stop()
+    process.exit(0)
+  }
+
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
 }
 
 function parseIntArg(raw: string | undefined, name: string, fallbackMsg: string): number | undefined {

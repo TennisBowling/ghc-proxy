@@ -6,13 +6,10 @@ import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import {
   getCachedConfig,
-  getResponsesOfficialEmulatorTtlSeconds,
-  isResponsesApiContextManagementModel,
   readConfig,
-  shouldAutoCompactResponsesInput,
-  shouldUseResponsesOfficialEmulator,
   writeConfigField,
 } from '../src/lib/config'
+import { configStore } from '../src/state/config-store'
 
 const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ghc-proxy-test-'))
 const tempConfigPath = path.join(tempDir, 'config.json')
@@ -120,10 +117,10 @@ describe('config module', () => {
   })
 
   test('responses auto-compaction and auto-context-management are disabled by default', async () => {
-    expect(shouldAutoCompactResponsesInput()).toBe(false)
-    expect(isResponsesApiContextManagementModel('gpt-5')).toBe(false)
-    expect(shouldUseResponsesOfficialEmulator()).toBe(false)
-    expect(getResponsesOfficialEmulatorTtlSeconds()).toBe(14_400)
+    expect(configStore.isAutoCompactResponsesInputEnabled()).toBe(false)
+    expect(configStore.isContextManagementModel('gpt-5')).toBe(false)
+    expect(configStore.isEmulatorEnabled()).toBe(false)
+    expect(configStore.getEmulatorTtlSeconds()).toBe(14_400)
   })
 
   test('responses auto-compaction and auto-context-management require explicit opt-in', async () => {
@@ -137,11 +134,11 @@ describe('config module', () => {
 
     await readConfig()
 
-    expect(shouldAutoCompactResponsesInput()).toBe(true)
-    expect(isResponsesApiContextManagementModel('gpt-5')).toBe(true)
-    expect(isResponsesApiContextManagementModel('gpt-4.1')).toBe(false)
-    expect(shouldUseResponsesOfficialEmulator()).toBe(true)
-    expect(getResponsesOfficialEmulatorTtlSeconds()).toBe(60)
+    expect(configStore.isAutoCompactResponsesInputEnabled()).toBe(true)
+    expect(configStore.isContextManagementModel('gpt-5')).toBe(true)
+    expect(configStore.isContextManagementModel('gpt-4.1')).toBe(false)
+    expect(configStore.isEmulatorEnabled()).toBe(true)
+    expect(configStore.getEmulatorTtlSeconds()).toBe(60)
   })
 
   test('writeConfigField() — gheDomain round-trip persists and reads back', async () => {
@@ -165,5 +162,211 @@ describe('config module', () => {
     await fs.writeFile(tempConfigPath, JSON.stringify({ githubToken: 'token-only' }))
     const config = await readConfig()
     expect(config.gheDomain).toBeUndefined()
+  })
+})
+
+describe('ConfigStore accessors', () => {
+  afterAll(async () => {
+    const config = getCachedConfig() as Record<string, unknown>
+    for (const key of Object.keys(config)) {
+      delete config[key]
+    }
+  })
+
+  function clearCachedConfig() {
+    const config = getCachedConfig() as Record<string, unknown>
+    for (const key of Object.keys(config)) {
+      delete config[key]
+    }
+  }
+
+  // ── isContextUpgradeEnabled ──
+
+  test('isContextUpgradeEnabled defaults to true', () => {
+    clearCachedConfig()
+    expect(configStore.isContextUpgradeEnabled()).toBe(true)
+  })
+
+  test('isContextUpgradeEnabled respects explicit false', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.contextUpgrade = false
+    expect(configStore.isContextUpgradeEnabled()).toBe(false)
+  })
+
+  test('isContextUpgradeEnabled returns true when set to true explicitly', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.contextUpgrade = true
+    expect(configStore.isContextUpgradeEnabled()).toBe(true)
+  })
+
+  // ── getContextUpgradeThreshold ──
+
+  test('getContextUpgradeThreshold defaults to 160000', () => {
+    clearCachedConfig()
+    expect(configStore.getContextUpgradeThreshold()).toBe(160_000)
+  })
+
+  test('getContextUpgradeThreshold respects configured value', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.contextUpgradeTokenThreshold = 100_000
+    expect(configStore.getContextUpgradeThreshold()).toBe(100_000)
+  })
+
+  // ── isCompactSmallModelEnabled ──
+
+  test('isCompactSmallModelEnabled defaults to false', () => {
+    clearCachedConfig()
+    expect(configStore.isCompactSmallModelEnabled()).toBe(false)
+  })
+
+  test('isCompactSmallModelEnabled respects explicit true', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.compactUseSmallModel = true
+    expect(configStore.isCompactSmallModelEnabled()).toBe(true)
+  })
+
+  // ── getSmallModel ──
+
+  test('getSmallModel returns undefined by default', () => {
+    clearCachedConfig()
+    expect(configStore.getSmallModel()).toBeUndefined()
+  })
+
+  test('getSmallModel returns trimmed string when set', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.smallModel = '  gpt-4.1-mini  '
+    expect(configStore.getSmallModel()).toBe('gpt-4.1-mini')
+  })
+
+  test('getSmallModel returns undefined for whitespace-only string', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.smallModel = '   '
+    expect(configStore.getSmallModel()).toBeUndefined()
+  })
+
+  test('getSmallModel returns undefined for empty string', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.smallModel = ''
+    expect(configStore.getSmallModel()).toBeUndefined()
+  })
+
+  // ── isFunctionApplyPatchEnabled ──
+
+  test('isFunctionApplyPatchEnabled defaults to true', () => {
+    clearCachedConfig()
+    expect(configStore.isFunctionApplyPatchEnabled()).toBe(true)
+  })
+
+  test('isFunctionApplyPatchEnabled respects explicit false', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.useFunctionApplyPatch = false
+    expect(configStore.isFunctionApplyPatchEnabled()).toBe(false)
+  })
+
+  // ── getReasoningEffort ──
+
+  test('getReasoningEffort defaults to high', () => {
+    clearCachedConfig()
+    expect(configStore.getReasoningEffort('claude-sonnet-4.5')).toBe('high')
+  })
+
+  test('getReasoningEffort respects per-model config', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.modelReasoningEfforts = { 'claude-sonnet-4.5': 'low', 'gpt-5': 'medium' }
+    expect(configStore.getReasoningEffort('claude-sonnet-4.5')).toBe('low')
+    expect(configStore.getReasoningEffort('gpt-5')).toBe('medium')
+  })
+
+  test('getReasoningEffort falls back to high for unconfigured model', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.modelReasoningEfforts = { 'gpt-5': 'low' }
+    expect(configStore.getReasoningEffort('claude-sonnet-4.5')).toBe('high')
+  })
+
+  // ── getModelRewrites ──
+
+  test('getModelRewrites returns empty array by default', () => {
+    clearCachedConfig()
+    expect(configStore.getModelRewrites()).toEqual([])
+  })
+
+  test('getModelRewrites returns configured array', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    const rewrites = [{ from: 'claude-opus', to: 'gpt-5' }]
+    config.modelRewrites = rewrites
+    expect(configStore.getModelRewrites()).toEqual(rewrites)
+  })
+
+  // ── getModelFallback ──
+
+  test('getModelFallback returns undefined by default', () => {
+    clearCachedConfig()
+    expect(configStore.getModelFallback()).toBeUndefined()
+  })
+
+  test('getModelFallback returns configured fallback', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.modelFallback = { claudeOpus: 'gpt-5' }
+    expect(configStore.getModelFallback()).toEqual({ claudeOpus: 'gpt-5' })
+  })
+
+  // ── isContextManagementEnabled ──
+
+  test('isContextManagementEnabled defaults to false', () => {
+    clearCachedConfig()
+    expect(configStore.isContextManagementEnabled()).toBe(false)
+  })
+
+  test('isContextManagementEnabled respects explicit true', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.responsesApiAutoContextManagement = true
+    expect(configStore.isContextManagementEnabled()).toBe(true)
+  })
+
+  // ── isContextManagementModel ──
+
+  test('isContextManagementModel returns false when context management is disabled', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.responsesApiAutoContextManagement = false
+    config.responsesApiContextManagementModels = ['gpt-5']
+    expect(configStore.isContextManagementModel('gpt-5')).toBe(false)
+  })
+
+  test('isContextManagementModel returns true for listed model when enabled', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.responsesApiAutoContextManagement = true
+    config.responsesApiContextManagementModels = ['gpt-5', 'gpt-4.1']
+    expect(configStore.isContextManagementModel('gpt-5')).toBe(true)
+    expect(configStore.isContextManagementModel('gpt-4.1')).toBe(true)
+  })
+
+  test('isContextManagementModel returns false for unlisted model when enabled', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.responsesApiAutoContextManagement = true
+    config.responsesApiContextManagementModels = ['gpt-5']
+    expect(configStore.isContextManagementModel('claude-sonnet-4.5')).toBe(false)
+  })
+
+  test('isContextManagementModel returns false when models list is absent', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.responsesApiAutoContextManagement = true
+    expect(configStore.isContextManagementModel('gpt-5')).toBe(false)
   })
 })

@@ -5,10 +5,10 @@ import type {
   ResponsesResult,
 } from '~/types'
 
-import {
-  getResponsesOfficialEmulatorTtlSeconds,
-  shouldUseResponsesOfficialEmulator,
-} from './config'
+import { configStore } from '~/state'
+
+const DEFAULT_MAX_TOTAL_ENTRIES = 10_000
+const BACKGROUND_PRUNE_INTERVAL_MS = 60_000
 
 export type ResponsesEmulatorDeletionKind = 'response' | 'conversation' | 'input_items'
 
@@ -31,12 +31,17 @@ export interface ResponsesEmulatorSnapshot {
   responses: number
 }
 
+export interface ResponsesEmulatorOptions {
+  maxTotalEntries?: number
+}
+
 export interface ResponsesEmulatorState {
   isEnabled: () => boolean
   getDefaultTtlSeconds: () => number
   clear: () => void
   pruneExpired: (now?: number) => void
   snapshot: (now?: number) => ResponsesEmulatorSnapshot
+  totalEntries: () => number
   setResponse: (response: ResponsesResult, options?: { ttlSeconds?: number }) => ResponsesResult
   getResponse: (responseId: string) => ResponsesResult | undefined
   deleteResponse: (responseId: string, options?: { ttlSeconds?: number }) => ResponseDeletionResult
@@ -66,9 +71,9 @@ function currentTime(): number {
 }
 
 function resolveTtlSeconds(ttlSeconds?: number): number {
-  const resolved = ttlSeconds ?? getResponsesOfficialEmulatorTtlSeconds()
+  const resolved = ttlSeconds ?? configStore.getEmulatorTtlSeconds()
   if (!Number.isFinite(resolved) || resolved <= 0) {
-    return getResponsesOfficialEmulatorTtlSeconds()
+    return configStore.getEmulatorTtlSeconds()
   }
   return Math.floor(resolved)
 }
@@ -83,7 +88,9 @@ function responseKeyFromConversation(conversation: ResponseConversation): string
     : conversation.id
 }
 
-export function createResponsesEmulatorState(): ResponsesEmulatorState {
+export function createResponsesEmulatorState(opts?: ResponsesEmulatorOptions): ResponsesEmulatorState {
+  const maxTotalEntries = opts?.maxTotalEntries ?? DEFAULT_MAX_TOTAL_ENTRIES
+
   const responseRecords = new Map<string, StoredEntry<ResponsesResult>>()
   const conversationRecords = new Map<string, StoredEntry<ResponseConversation>>()
   const conversationHeadRecords = new Map<string, StoredEntry<string>>()
@@ -91,6 +98,44 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
   const responseDeletionFlags = new Map<string, StoredEntry<ResponsesEmulatorDeletionFlag>>()
   const conversationDeletionFlags = new Map<string, StoredEntry<ResponsesEmulatorDeletionFlag>>()
   const inputItemDeletionFlags = new Map<string, StoredEntry<ResponsesEmulatorDeletionFlag>>()
+
+  const allMaps: Array<Map<string, StoredEntry<unknown>>> = [
+    responseRecords,
+    conversationRecords,
+    conversationHeadRecords,
+    inputItemRecords,
+    responseDeletionFlags,
+    conversationDeletionFlags,
+    inputItemDeletionFlags,
+  ] as Array<Map<string, StoredEntry<unknown>>>
+
+  let pruneIntervalId: ReturnType<typeof setInterval> | undefined
+
+  function startBackgroundPrune(): void {
+    if (pruneIntervalId !== undefined)
+      return
+    pruneIntervalId = setInterval(pruneExpiredRecords, BACKGROUND_PRUNE_INTERVAL_MS)
+    if (typeof pruneIntervalId === 'object' && 'unref' in pruneIntervalId) {
+      pruneIntervalId.unref()
+    }
+  }
+
+  function stopBackgroundPrune(): void {
+    if (pruneIntervalId !== undefined) {
+      clearInterval(pruneIntervalId)
+      pruneIntervalId = undefined
+    }
+  }
+
+  startBackgroundPrune()
+
+  function totalEntries(): number {
+    let sum = 0
+    for (const map of allMaps) {
+      sum += map.size
+    }
+    return sum
+  }
 
   function pruneMap<T>(map: Map<string, StoredEntry<T>>, at = currentTime()): void {
     for (const [key, entry] of map) {
@@ -190,13 +235,47 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
     pruneMap(inputItemDeletionFlags, at)
   }
 
+  function evictOldestFromLargestMap(): void {
+    let largest: Map<string, StoredEntry<unknown>> | undefined
+    let largestSize = 0
+    for (const map of allMaps) {
+      if (map.size > largestSize) {
+        largestSize = map.size
+        largest = map as Map<string, StoredEntry<unknown>>
+      }
+    }
+    if (!largest || largestSize === 0)
+      return
+
+    let oldestKey: string | undefined
+    let oldestExpires = Number.POSITIVE_INFINITY
+    for (const [key, entry] of largest) {
+      if (entry.expiresAt < oldestExpires) {
+        oldestExpires = entry.expiresAt
+        oldestKey = key
+      }
+    }
+    if (oldestKey !== undefined) {
+      largest.delete(oldestKey)
+    }
+  }
+
+  function enforceCapOnWrite(): void {
+    if (totalEntries() < maxTotalEntries)
+      return
+    pruneExpiredRecords()
+    if (totalEntries() >= maxTotalEntries) {
+      evictOldestFromLargestMap()
+    }
+  }
+
   return {
     isEnabled() {
-      return shouldUseResponsesOfficialEmulator()
+      return configStore.isEmulatorEnabled()
     },
 
     getDefaultTtlSeconds() {
-      return getResponsesOfficialEmulatorTtlSeconds()
+      return configStore.getEmulatorTtlSeconds()
     },
 
     clear() {
@@ -207,11 +286,14 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
       responseDeletionFlags.clear()
       conversationDeletionFlags.clear()
       inputItemDeletionFlags.clear()
+      stopBackgroundPrune()
     },
 
     pruneExpired(nowValue?: number) {
       pruneExpiredRecords(nowValue ?? currentTime())
     },
+
+    totalEntries,
 
     snapshot(nowValue?: number) {
       const at = nowValue ?? currentTime()
@@ -229,7 +311,7 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
     },
 
     setResponse(response, options) {
-      pruneExpiredRecords()
+      enforceCapOnWrite()
       removeDeletionFlag(responseDeletionFlags, response.id)
       if (response.conversation !== undefined && response.conversation !== null) {
         const conversationId = responseKeyFromConversation(response.conversation)
@@ -241,7 +323,6 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
     },
 
     getResponse(responseId) {
-      pruneExpiredRecords()
       if (readDeletionFlag(responseDeletionFlags, responseId)) {
         return undefined
       }
@@ -270,14 +351,13 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
     },
 
     setConversation(conversation, options) {
-      pruneExpiredRecords()
+      enforceCapOnWrite()
       const conversationId = responseKeyFromConversation(conversation)
       removeDeletionFlag(conversationDeletionFlags, conversationId)
       return writeMap(conversationRecords, conversationId, conversation, options?.ttlSeconds)
     },
 
     getConversation(conversationId) {
-      pruneExpiredRecords()
       if (readDeletionFlag(conversationDeletionFlags, conversationId)) {
         return undefined
       }
@@ -297,12 +377,11 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
     },
 
     setConversationHead(conversationId, responseId, options) {
-      pruneExpiredRecords()
+      enforceCapOnWrite()
       return writeMap(conversationHeadRecords, conversationId, responseId, options?.ttlSeconds)
     },
 
     getConversationHead(conversationId) {
-      pruneExpiredRecords()
       return readMap(conversationHeadRecords, conversationId)
     },
 
@@ -311,13 +390,12 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
     },
 
     setInputItems(responseId, inputItems, options) {
-      pruneExpiredRecords()
+      enforceCapOnWrite()
       removeDeletionFlag(inputItemDeletionFlags, responseId)
       return writeMap(inputItemRecords, responseId, inputItems, options?.ttlSeconds)
     },
 
     getInputItems(responseId) {
-      pruneExpiredRecords()
       if (readDeletionFlag(inputItemDeletionFlags, responseId)) {
         return undefined
       }
@@ -336,12 +414,11 @@ export function createResponsesEmulatorState(): ResponsesEmulatorState {
     },
 
     setDeletionFlag(kind, id, options) {
-      pruneExpiredRecords()
+      enforceCapOnWrite()
       return putDeletionFlag(deletionMap(kind), id, options?.ttlSeconds)
     },
 
     getDeletionFlag(kind, id) {
-      pruneExpiredRecords()
       return readDeletionFlag(deletionMap(kind), id)
     },
 

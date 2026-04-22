@@ -4,6 +4,7 @@ import { Elysia } from 'elysia'
 
 import { HTTPError } from './lib/error'
 import { formatElapsed, getRequestModelMapping, logRequest, setRequestModelMapping } from './lib/request-logger'
+import { VERSION } from './lib/version'
 import { createCompletionRoutes } from './routes/chat-completions/route'
 import { createEmbeddingRoutes } from './routes/embeddings/route'
 import { createMessageRoutes } from './routes/messages/route'
@@ -11,6 +12,7 @@ import { createModelRoutes } from './routes/models/route'
 import { createResponsesRoutes } from './routes/responses/route'
 import { createTokenRoute } from './routes/token/route'
 import { createUsageRoute } from './routes/usage/route'
+import { authStore, modelCache } from './state'
 
 const isBun = typeof globalThis.Bun !== 'undefined'
 
@@ -27,8 +29,9 @@ export function createServer(options?: ServerOptions) {
   })
     .use(cors())
     .error({ HTTP: HTTPError })
-    .derive(() => ({
+    .derive(({ request }) => ({
       requestStart: Date.now(),
+      requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
     }))
     .onBeforeHandle(({ body, request }) => {
       if (request.method !== 'POST')
@@ -40,10 +43,11 @@ export function createServer(options?: ServerOptions) {
         setRequestModelMapping(request, { originalModel: model, steps: [] })
       }
     })
-    .onAfterResponse(({ request, requestStart, set }) => {
+    .onAfterResponse(({ request, requestStart, requestId, set }) => {
+      set.headers['x-request-id'] = requestId
       const elapsed = formatElapsed(requestStart)
       const status = typeof set.status === 'number' ? set.status : 200
-      logRequest(request.method, request.url, status, elapsed, getRequestModelMapping(request))
+      logRequest(request.method, request.url, status, elapsed, getRequestModelMapping(request), requestId)
     })
     .onError(({ code, error }) => {
       // HTTPError is auto-handled via toResponse() — just let it through
@@ -64,6 +68,12 @@ export function createServer(options?: ServerOptions) {
       )
     })
     .get('/', () => 'Server running')
+    .get('/health', () => ({
+      status: 'ok',
+      copilotToken: !!authStore.copilotToken,
+      modelsLoaded: !!modelCache.getModels(),
+      version: VERSION,
+    }))
     // Root-level routes: completions, models, embeddings, responses are registered here
     // for clients that omit the /v1 prefix. Token and usage routes are root-only
     // because they are proxy-specific endpoints, not part of any upstream API spec.

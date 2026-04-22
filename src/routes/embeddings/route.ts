@@ -7,7 +7,7 @@ import { handleEmbeddingsCore } from './handler'
 export function createEmbeddingRoutes() {
   return new Elysia()
     .use(requestGuardPlugin)
-    .post('/embeddings', async ({ body }) => {
-      return handleEmbeddingsCore(body)
+    .post('/embeddings', async ({ body, request }) => {
+      return handleEmbeddingsCore(body, request.headers)
     }, { guarded: true })
 }

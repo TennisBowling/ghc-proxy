@@ -11,9 +11,3 @@ export interface ModelTransformResult {
   resolvedModel?: Model
   trace: ModelTransformRecord[]
 }
-
-export interface RawRequest {
-  body: unknown
-  headers: Headers
-  signal: AbortSignal
-}

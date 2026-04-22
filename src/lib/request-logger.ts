@@ -92,6 +92,22 @@ export function appendModelStep(
   }
 }
 
+/**
+ * Mutate `modelMapping` in place by appending a transform step.
+ * `appendModelStep` returns a new object, but strategy contexts
+ * hold a reference to the same `modelMapping`, so we push directly.
+ */
+export function appendModelStepInPlace(
+  info: ModelMappingInfo,
+  tag: ModelTransformTag,
+  newModel: string,
+): void {
+  const current = getEffectiveModel(info)
+  if (newModel !== current) {
+    info.steps.push({ tag, from: current, to: newModel })
+  }
+}
+
 function formatModelMapping(info: ModelMappingInfo | undefined): string {
   if (!info)
     return ''
@@ -124,6 +140,7 @@ export function logRequest(
   status: number,
   elapsed: string,
   modelInfo?: ModelMappingInfo,
+  requestId?: string,
 ): void {
   const path = formatPath(url)
   const line = [
@@ -134,6 +151,8 @@ export function logRequest(
     colorize('dim', elapsed),
   ].join(' ')
 
+  const rid = requestId ? ` ${colorize('dim', `rid=${requestId.slice(0, 8)}`)}` : ''
+
   // eslint-disable-next-line no-console
-  console.log(`${line}${formatModelMapping(modelInfo)}`)
+  console.log(`${line}${formatModelMapping(modelInfo)}${rid}`)
 }

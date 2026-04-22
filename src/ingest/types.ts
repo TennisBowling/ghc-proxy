@@ -1,3 +1,5 @@
+import type { CapiRequestContext } from '~/core/capi'
+
 export type ProtocolId
   = | 'anthropic-messages'
     | 'anthropic-count-tokens'
@@ -10,7 +12,7 @@ export interface RequestMeta {
   sessionId?: string
   subagentInfo?: unknown
   betaHeaders?: string[]
-  requestContext?: unknown
+  requestContext?: Partial<CapiRequestContext>
 }
 
 export interface ProtocolHandler<TPayload = unknown> {

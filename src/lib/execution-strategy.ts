@@ -36,7 +36,14 @@ export async function runStrategy<TResult, TChunk>(
   strategy: ExecutionStrategy<TResult, TChunk>,
   signal: { signal: AbortSignal, clientSignal?: AbortSignal, cleanup: () => void },
 ): Promise<ExecutionResult> {
-  const result = await strategy.execute()
+  let result: TResult
+  try {
+    result = await strategy.execute()
+  }
+  catch (error) {
+    signal.cleanup()
+    throw error
+  }
 
   if (!strategy.isStream(result)) {
     signal.cleanup()

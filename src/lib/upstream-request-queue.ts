@@ -1,5 +1,6 @@
 import consola from 'consola'
 
+import { HTTPError } from './error'
 import { sleep as defaultSleep } from './sleep'
 
 export interface UpstreamRequestQueueOptions {
@@ -7,6 +8,7 @@ export interface UpstreamRequestQueueOptions {
   maxRetries: number
   baseDelayMs: number
   maxDelayMs: number
+  maxQueueDepth: number
 }
 
 export interface UpstreamRequestContext {
@@ -41,6 +43,7 @@ const DEFAULT_UPSTREAM_QUEUE_OPTIONS: UpstreamRequestQueueOptions = {
   maxRetries: 5,
   baseDelayMs: 2_000,
   maxDelayMs: 60_000,
+  maxQueueDepth: 1_000,
 }
 
 export class UpstreamRequestQueue {
@@ -121,6 +124,12 @@ export class UpstreamRequestQueue {
 
   private acquire(signal?: AbortSignal): Promise<QueueLease> {
     signal?.throwIfAborted()
+
+    if (this.waiters.length >= this.options.maxQueueDepth) {
+      return Promise.reject(new HTTPError(503, {
+        error: { message: 'Upstream queue full', type: 'overloaded_error' },
+      }))
+    }
 
     return new Promise<QueueLease>((resolve, reject) => {
       let resolved = false
@@ -230,6 +239,7 @@ function normalizeOptions(
     maxRetries: Math.max(0, Math.floor(finiteOr(options.maxRetries, DEFAULT_UPSTREAM_QUEUE_OPTIONS.maxRetries))),
     baseDelayMs: Math.max(0, Math.floor(finiteOr(options.baseDelayMs, DEFAULT_UPSTREAM_QUEUE_OPTIONS.baseDelayMs))),
     maxDelayMs: Math.max(1, Math.floor(finiteOr(options.maxDelayMs, DEFAULT_UPSTREAM_QUEUE_OPTIONS.maxDelayMs))),
+    maxQueueDepth: Math.max(1, Math.floor(finiteOr(options.maxQueueDepth, DEFAULT_UPSTREAM_QUEUE_OPTIONS.maxQueueDepth))),
   }
 }
 
@@ -242,6 +252,7 @@ function mergeDefinedOptions(
     maxRetries: next.maxRetries ?? current.maxRetries,
     baseDelayMs: next.baseDelayMs ?? current.baseDelayMs,
     maxDelayMs: next.maxDelayMs ?? current.maxDelayMs,
+    maxQueueDepth: next.maxQueueDepth ?? current.maxQueueDepth,
   }
 }
 

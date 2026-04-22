@@ -1,6 +1,7 @@
+import type { CopilotClient } from '~/clients'
 import type { CapiRequestContext } from '~/core/capi/types'
-import type { ResponseInputItemsListParams, ResponseRetrieveParams, ResponsesInputTokensPayload } from '~/types'
 
+import type { ResponseInputItemsListParams, ResponseRetrieveParams, ResponsesInputTokensPayload } from '~/types'
 import { resolveModelOrThrow } from '~/lib/error'
 import { createCopilotClient } from '~/lib/state'
 import {
@@ -44,29 +45,31 @@ class EmulatorResourceDispatcher implements ResourceDispatcher {
 }
 
 class UpstreamResourceDispatcher implements ResourceDispatcher {
+  private client: CopilotClient
+
+  constructor(client: CopilotClient) {
+    this.client = client
+  }
+
   retrieve(responseId: string, params?: ResponseRetrieveParams, options?: ResourceRequestOptions): Promise<unknown> {
-    const client = createCopilotClient()
-    return client.getResponse(responseId, { params, ...options })
+    return this.client.getResponse(responseId, { params, ...options })
   }
 
   listInputItems(responseId: string, params?: ResponseInputItemsListParams, options?: ResourceRequestOptions): Promise<unknown> {
-    const client = createCopilotClient()
-    return client.getResponseInputItems(responseId, params, options)
+    return this.client.getResponseInputItems(responseId, params, options)
   }
 
   createInputTokens(payload: ResponsesInputTokensPayload, options?: ResourceRequestOptions): Promise<unknown> {
-    const client = createCopilotClient()
-    return client.createResponseInputTokens(payload, options)
+    return this.client.createResponseInputTokens(payload, options)
   }
 
   delete(responseId: string, options?: ResourceRequestOptions): Promise<unknown> {
-    const client = createCopilotClient()
-    return client.deleteResponse(responseId, options)
+    return this.client.deleteResponse(responseId, options)
   }
 }
 
 export function createResourceDispatcher(): ResourceDispatcher {
   return configStore.isEmulatorEnabled()
     ? new EmulatorResourceDispatcher()
-    : new UpstreamResourceDispatcher()
+    : new UpstreamResourceDispatcher(createCopilotClient())
 }

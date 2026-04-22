@@ -1,7 +1,7 @@
 import type { CopilotClient } from '~/clients'
 import type { CapiRequestContext } from '~/core/capi'
 import type { StrategyEntry } from '~/dispatch'
-import type { ModelMappingInfo, ModelTransformTag } from '~/lib/request-logger'
+import type { ModelMappingInfo } from '~/lib/request-logger'
 import type { createUpstreamSignalFromConfig } from '~/lib/upstream-signal'
 import type { AnthropicMessagesPayload } from '~/translator'
 import type { Model } from '~/types'
@@ -11,10 +11,10 @@ import { CopilotTransport } from '~/adapters'
 import { StrategyRegistry } from '~/dispatch'
 import { withTranslationErrors } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
-import { getEffectiveModel } from '~/lib/request-logger'
+import { appendModelStepInPlace } from '~/lib/request-logger'
 import { configStore, MESSAGES_ENDPOINT, modelCache, RESPONSES_ENDPOINT } from '~/state'
+import { filterThinkingBlocksForNativeMessages, sanitizeCacheControl, sanitizeOutputConfig } from '~/transform/sanitize'
 import { translateAnthropicToResponsesPayload } from '~/translator/responses/anthropic-to-responses'
-import { SignatureCodec } from '~/translator/responses/signature-codec'
 
 import { applyContextManagement, compactInputByLatestCompaction, getResponsesRequestOptions } from '../responses/context-management'
 import { createAnthropicAdapter } from './shared'
@@ -31,147 +31,6 @@ export interface StrategyContext {
   headers: Headers
   requestContext: Partial<CapiRequestContext>
   modelMapping: ModelMappingInfo
-}
-
-function filterThinkingBlocksForNativeMessages(
-  anthropicPayload: AnthropicMessagesPayload,
-) {
-  for (const message of anthropicPayload.messages) {
-    if (message.role !== 'assistant' || !Array.isArray(message.content)) {
-      continue
-    }
-    message.content = message.content.filter((block) => {
-      if (block.type !== 'thinking') {
-        return true
-      }
-      return Boolean(
-        block.thinking
-        && block.thinking !== 'Thinking...'
-        && block.signature
-        && !SignatureCodec.isReasoningSignature(block.signature)
-        && !SignatureCodec.isCompactionSignature(block.signature),
-      )
-    })
-  }
-}
-
-/**
- * Strip `output_config` for models known to reject it, and clamp
- * unsupported effort values to the highest effort the selected model
- * advertises. Copilot rejects unknown effort values before generation.
- */
-function sanitizeOutputConfig(
-  payload: AnthropicMessagesPayload,
-  model: Model | undefined,
-): void {
-  if (!payload.output_config) {
-    return
-  }
-
-  if (!modelCache.supportsOutputConfig(model)) {
-    delete payload.output_config
-    return
-  }
-
-  const effort = payload.output_config.effort
-  if (effort == null) {
-    delete payload.output_config.effort
-    if (Object.keys(payload.output_config).length === 0) {
-      delete payload.output_config
-    }
-    return
-  }
-
-  const normalizedEffort = normalizeOutputConfigEffort(effort, model)
-  if (normalizedEffort) {
-    payload.output_config.effort = normalizedEffort
-  }
-}
-
-const OUTPUT_CONFIG_EFFORTS = ['low', 'medium', 'high', 'max', 'xhigh'] as const
-type OutputConfigEffort = typeof OUTPUT_CONFIG_EFFORTS[number]
-
-const OUTPUT_CONFIG_EFFORT_RANK = new Map<OutputConfigEffort, number>(
-  OUTPUT_CONFIG_EFFORTS.map((effort, index) => [effort, index]),
-)
-
-function isOutputConfigEffort(value: string): value is OutputConfigEffort {
-  return OUTPUT_CONFIG_EFFORT_RANK.has(value as OutputConfigEffort)
-}
-
-function normalizeOutputConfigEffort(
-  effort: OutputConfigEffort,
-  model: Model | undefined,
-): OutputConfigEffort | undefined {
-  const supportedEfforts = model?.capabilities.supports.reasoning_effort
-    ?.filter(isOutputConfigEffort)
-  if (!supportedEfforts?.length) {
-    return undefined
-  }
-
-  if (supportedEfforts.includes(effort)) {
-    return effort
-  }
-
-  return supportedEfforts.reduce((highest, current) => {
-    const highestRank = OUTPUT_CONFIG_EFFORT_RANK.get(highest) ?? -1
-    const currentRank = OUTPUT_CONFIG_EFFORT_RANK.get(current) ?? -1
-    return currentRank > highestRank ? current : highest
-  })
-}
-
-function normalizeCacheControlBlock(obj: Record<string, unknown>) {
-  if (obj.cache_control && typeof obj.cache_control === 'object') {
-    obj.cache_control = { type: (obj.cache_control as Record<string, unknown>).type }
-  }
-}
-
-/**
- * Normalize `cache_control` to strip extra fields (e.g. `scope`) that
- * the upstream Copilot API does not yet accept.
- *
- * Temporary workaround — when Copilot supports `scope`, this filter
- * should be removed. The smoke-cache-control script tests whether the
- * upstream accepts `scope`.
- */
-function sanitizeCacheControl(payload: AnthropicMessagesPayload): void {
-  if (Array.isArray(payload.system)) {
-    for (const block of payload.system) {
-      normalizeCacheControlBlock(block as unknown as Record<string, unknown>)
-    }
-  }
-
-  for (const message of payload.messages) {
-    normalizeCacheControlBlock(message as unknown as Record<string, unknown>)
-    if (Array.isArray(message.content)) {
-      for (const block of message.content) {
-        normalizeCacheControlBlock(block as unknown as Record<string, unknown>)
-      }
-    }
-  }
-
-  if (payload.tools) {
-    for (const tool of payload.tools) {
-      normalizeCacheControlBlock(tool as unknown as Record<string, unknown>)
-    }
-  }
-}
-
-/**
- * Mutate `modelMapping` in place by appending a transform step.
- * `appendModelStep` from request-logger returns a new object, but here
- * the handler holds a reference to the same `modelMapping` passed into
- * the strategy context, so we need to push directly.
- */
-function appendModelStepInPlace(
-  info: ModelMappingInfo,
-  tag: ModelTransformTag,
-  newModel: string,
-): void {
-  const current = getEffectiveModel(info)
-  if (newModel !== current) {
-    info.steps.push({ tag, from: current, to: newModel })
-  }
 }
 
 const nativeMessagesEntry: StrategyEntry<StrategyContext> = {

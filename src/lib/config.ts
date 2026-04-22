@@ -86,8 +86,18 @@ export async function readConfig(): Promise<ConfigFile> {
         result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; '),
         'Using defaults for invalid fields.',
       )
-      // Fall back to treating the raw object as-is for known valid fields
-      cachedConfig = raw as ConfigFile
+      // Pick only individually valid fields to avoid unsafe casts
+      const partial: Record<string, unknown> = {}
+      const rawObj = raw as Record<string, unknown>
+      for (const [key, schema] of Object.entries(configFileSchema.shape)) {
+        if (key in rawObj) {
+          const fieldResult = (schema as z.ZodTypeAny).safeParse(rawObj[key])
+          if (fieldResult.success) {
+            partial[key] = fieldResult.data
+          }
+        }
+      }
+      cachedConfig = partial as ConfigFile
       return cachedConfig
     }
 
@@ -117,49 +127,6 @@ export async function readConfig(): Promise<ConfigFile> {
 
 export function getCachedConfig(): ConfigFile {
   return cachedConfig
-}
-
-export function getSmallModel(): string | undefined {
-  return cachedConfig.smallModel?.trim() || undefined
-}
-
-export function shouldCompactUseSmallModel(): boolean {
-  return cachedConfig.compactUseSmallModel ?? DEFAULT_COMPACT_USE_SMALL_MODEL
-}
-
-export function shouldUseFunctionApplyPatch(): boolean {
-  return cachedConfig.useFunctionApplyPatch ?? DEFAULT_USE_FUNCTION_APPLY_PATCH
-}
-
-export function shouldAutoCompactResponsesInput(): boolean {
-  return cachedConfig.responsesApiAutoCompactInput ?? DEFAULT_RESPONSES_API_AUTO_COMPACT_INPUT
-}
-
-export function isResponsesApiContextManagementModel(model: string): boolean {
-  if (!(cachedConfig.responsesApiAutoContextManagement ?? DEFAULT_RESPONSES_API_AUTO_CONTEXT_MANAGEMENT)) {
-    return false
-  }
-  return cachedConfig.responsesApiContextManagementModels?.includes(model) ?? false
-}
-
-export function shouldUseResponsesOfficialEmulator(): boolean {
-  return cachedConfig.responsesOfficialEmulator ?? DEFAULT_RESPONSES_OFFICIAL_EMULATOR
-}
-
-export function getResponsesOfficialEmulatorTtlSeconds(): number {
-  return cachedConfig.responsesOfficialEmulatorTtlSeconds ?? DEFAULT_RESPONSES_OFFICIAL_EMULATOR_TTL_SECONDS
-}
-
-export function shouldContextUpgrade(): boolean {
-  return cachedConfig.contextUpgrade ?? DEFAULT_CONTEXT_UPGRADE
-}
-
-export function getContextUpgradeTokenThreshold(): number {
-  return cachedConfig.contextUpgradeTokenThreshold ?? DEFAULT_CONTEXT_UPGRADE_TOKEN_THRESHOLD
-}
-
-export function getReasoningEffortForModel(model: string): ReasoningEffort {
-  return cachedConfig.modelReasoningEfforts?.[model] ?? DEFAULT_REASONING_EFFORT
 }
 
 export async function writeConfigField(

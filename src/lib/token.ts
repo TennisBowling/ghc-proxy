@@ -12,11 +12,13 @@ import { cacheVSCodeVersion, getClientConfig } from './state'
 
 const TRAILING_SLASHES_RE = /\/+$/
 
+let refreshTimerId: ReturnType<typeof setTimeout> | undefined
+
 async function writeGithubToken(token: string): Promise<void> {
   await writeConfigField('githubToken', token)
 }
 
-export async function setupCopilotToken() {
+export async function setupCopilotToken(): Promise<() => void> {
   await ensureVSCodeVersion()
   const githubClient = createGitHubClient()
   const response = await githubClient.getCopilotToken()
@@ -28,14 +30,25 @@ export async function setupCopilotToken() {
   }
 
   const REFRESH_BUFFER_SECONDS = 60
-  const refreshInterval = (response.refresh_in - REFRESH_BUFFER_SECONDS) * 1000
+  const refreshInterval = Math.max(30_000, (response.refresh_in - REFRESH_BUFFER_SECONDS) * 1000)
+
+  if (refreshTimerId !== undefined) {
+    clearTimeout(refreshTimerId)
+  }
 
   const scheduleRefresh = () => {
-    setTimeout(() => {
+    refreshTimerId = setTimeout(() => {
       void refreshCopilotToken(githubClient).then(scheduleRefresh)
     }, refreshInterval)
   }
   scheduleRefresh()
+
+  return () => {
+    if (refreshTimerId !== undefined) {
+      clearTimeout(refreshTimerId)
+      refreshTimerId = undefined
+    }
+  }
 }
 
 export async function refreshCopilotToken(githubClient: GitHubClient): Promise<void> {

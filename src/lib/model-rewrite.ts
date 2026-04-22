@@ -1,8 +1,6 @@
 import consola from 'consola'
 
-import { modelCache } from '~/state'
-
-import { getCachedConfig, getContextUpgradeTokenThreshold } from './config'
+import { configStore, modelCache } from '~/state'
 import { HTTPError } from './error'
 
 // ── Types ──
@@ -21,8 +19,8 @@ export interface ModelRewriteResult {
  */
 export function rewriteModel(modelId: string): ModelRewriteResult {
   // 1. User-configured rules (first match wins)
-  const userRules = getCachedConfig().modelRewrites
-  if (userRules) {
+  const userRules = configStore.getModelRewrites()
+  if (userRules.length > 0) {
     for (const rule of userRules) {
       if (matchesGlob(rule.from, modelId)) {
         const target = normalizeToKnownModel(rule.to) ?? rule.to
@@ -134,7 +132,7 @@ export function resolveContextUpgrade(
   estimatedTokens: number,
 ): string | undefined {
   const rule = findUpgradeRule(model)
-  if (rule && estimatedTokens > getContextUpgradeTokenThreshold()) {
+  if (rule && estimatedTokens > configStore.getContextUpgradeThreshold()) {
     return rule.to
   }
   return undefined

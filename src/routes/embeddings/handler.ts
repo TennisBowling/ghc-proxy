@@ -13,11 +13,11 @@ function normalizeEmbeddingRequest(payload: EmbeddingRequest): EmbeddingRequest 
 /**
  * Core handler for creating embeddings.
  */
-export async function handleEmbeddingsCore(body: unknown): Promise<object> {
+export async function handleEmbeddingsCore(body: unknown, headers: Headers): Promise<object> {
   const { payload } = protocolRegistry.ingest<EmbeddingRequest>(
     'embeddings',
     body,
-    new Headers(),
+    headers,
   )
   const copilotClient = createCopilotClient()
   return await copilotClient.createEmbeddings(normalizeEmbeddingRequest(payload))

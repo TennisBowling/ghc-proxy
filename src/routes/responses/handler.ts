@@ -39,7 +39,7 @@ export async function handleResponsesCore(
     body,
     headers,
   )
-  const requestContext = meta.requestContext as Partial<import('~/core/capi').CapiRequestContext>
+  const requestContext = meta.requestContext
   const emulatorMode = configStore.isEmulatorEnabled()
   const emulatorPrepared = emulatorMode
     ? prepareEmulatorRequest(payload)
@@ -86,7 +86,7 @@ export async function handleResponsesCore(
     copilotClient,
     payload: effectivePayload,
     upstreamSignal,
-    requestContext,
+    requestContext: requestContext ?? {},
     vision,
     initiator,
     decorateResponse,

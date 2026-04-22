@@ -17,12 +17,19 @@ export class StrategyRegistry<TContext = unknown> {
   }
 
   select(model: Model | undefined): StrategyEntry<TContext> {
+    if (this.entries.length === 0) {
+      throw new Error('StrategyRegistry has no registered entries')
+    }
+
     for (const entry of this.entries) {
       if (entry.canHandle(model)) {
         consola.debug(`Strategy selected: ${entry.name} for model: ${model?.id ?? '(unknown)'}`)
         return entry
       }
     }
-    return this.entries.at(-1)!
+
+    const fallback = this.entries.at(-1)!
+    consola.warn(`No strategy matched for model ${model?.id ?? '(unknown)'}, falling back to: ${fallback.name}`)
+    return fallback
   }
 }

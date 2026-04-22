@@ -5,7 +5,7 @@ import type {
 
 import { z } from 'zod'
 
-import { shouldUseFunctionApplyPatch } from '../config'
+import { configStore } from '~/state'
 
 import {
   finiteNumberSchema,
@@ -326,7 +326,7 @@ function createResponsesPayloadSchema(options: {
           if (tool.type === 'function' && typeof tool.name === 'string') {
             return true
           }
-          return shouldUseFunctionApplyPatch()
+          return configStore.isFunctionApplyPatchEnabled()
             && tool.type === 'custom'
             && tool.name === 'apply_patch'
         })
