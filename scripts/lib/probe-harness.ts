@@ -8,7 +8,7 @@ import type { Model } from '~/types'
 import process from 'node:process'
 import consola from 'consola'
 import { copilotBaseUrl, copilotHeaders } from '~/lib/api-config'
-import { readConfig } from '~/lib/config'
+import { getCachedConfig, readConfig } from '~/lib/config'
 import { MESSAGES_ENDPOINT } from '~/lib/model-capabilities'
 import { ensurePaths } from '~/lib/paths'
 import { cacheModels, cacheVSCodeVersion, getClientConfig } from '~/lib/state'
@@ -40,6 +40,10 @@ export async function bootstrapProbe(options?: { silent?: boolean, timeoutMs?: n
 
   await ensurePaths()
   await readConfig()
+
+  // Probe scripts must test actual models, not user-configured rewrites
+  delete (getCachedConfig() as Record<string, unknown>).modelRewrites
+
   await cacheVSCodeVersion()
   await setupGitHubToken()
   await setupCopilotToken()

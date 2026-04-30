@@ -102,7 +102,7 @@ Those routes are still exposed by the proxy because they belong to the official 
 
 ### Server-side tool support
 
-As of April 7, 2026, the Copilot `/v1/messages` endpoint recognizes type-based (server-side) tools but support varies per model. A comprehensive probe across all Claude models showed:
+As of April 30, 2026, the Copilot `/v1/messages` endpoint recognizes type-based (server-side) tools but support varies per model. A comprehensive probe across all Claude models showed:
 
 | Tool type | Universally supported | Notes |
 |-----------|----------------------|-------|
@@ -110,14 +110,31 @@ As of April 7, 2026, the Copilot `/v1/messages` endpoint recognizes type-based (
 | `bash_20250124` | Yes | All models |
 | `text_editor_20250728` | Yes | All models (name must be `str_replace_based_edit_tool`) |
 | `custom` | Yes | All models |
-| `memory_20250818` | Partial | Opus 4.6, Sonnet 4.5, Haiku 4.5 only |
-| `tool_search_tool_*` | Partial | Opus 4.6, Sonnet 4.5 only |
+| `memory_20250818` | Partial | Opus 4.6+, Opus 4.7, Sonnet 4.5, Haiku 4.5 |
+| `tool_search_tool_*` | Partial | Opus 4.6+, Opus 4.7, Sonnet 4.5 |
+| `code_execution_20250522` | Partial | Opus 4.7 only |
+| `code_execution_20250825` | Partial | Opus 4.7 only |
+| `code_execution_20260120` | Partial | Opus 4.7 only |
 | `web_search_20250305` | No | Tag registered but policy-blocked on all models |
+| `web_search_20260209` | No | Not registered on any model |
+| `web_fetch_20250910` | No | Not registered on any model |
+| `web_fetch_20260209` | No | Not registered on any model |
+| `mcp_toolset` | No | Not registered on any model |
+| `mcp-client-2025-11-20` | No | Not registered on any model |
 | `text_editor_20250124/0429` | No | Deprecated; newer models reject them |
-| `code_execution_20250522` | No | Tag not registered |
 | `computer_20250124` | No | Tag not registered |
 
-On the `/responses` endpoint (GPT models only), `web_search_preview` and custom tools (`apply_patch`, `shell`) are accepted. `file_search`, `code_interpreter`, `computer_use_preview`, `image_generation`, and `mcp` are rejected.
+All four Opus 4.7 variants (`claude-opus-4.7`, `claude-opus-4.7-high`, `claude-opus-4.7-xhigh`, `claude-opus-4.7-1m-internal`) have identical tool support. They gained `code_execution` (all three versions) and `tool_search_tool_bm25` compared to Opus 4.6.
+
+On the `/responses` endpoint (GPT models including `gpt-5.5`), `web_search_preview` and custom tools (`apply_patch`, `shell`) are accepted. `file_search`, `code_interpreter`, `computer_use_preview`, `image_generation`, and `mcp` are rejected. `gpt-5.5` has identical tool support to `gpt-5.4`.
+
+### Prompt caching
+
+As of April 30, 2026, prompt caching via `cache_control: { type: "ephemeral" }` is supported across all tested models on both `/v1/messages` and `/responses` paths. One notable exception:
+
+- `claude-opus-4.7-xhigh` has a higher minimum cache threshold (~8K tokens vs the standard ~4K for other Opus models). The `cache_control` field is accepted without error, but caching only activates when the cacheable content exceeds approximately 8192 tokens.
+
+Run `bun scripts/probe-cache-threshold.ts --model=<id>` to probe a specific model's cache threshold.
 
 Run `bun scripts/probe-all-copilot-tools.ts --json` to get a current snapshot. Weekly diffs detect backend changes.
 

@@ -44,6 +44,18 @@ The proxy queries each model's metadata from Copilot's model list to determine:
 | `adaptive_thinking`    | Whether to fill thinking config                      |
 | Vision limits          | Max image tokens, max images per request             |
 
+### Model Endpoint Map (April 30, 2026)
+
+| Model | Endpoints | Notes |
+|-------|-----------|-------|
+| `claude-opus-4.7` / `-high` / `-xhigh` | `/v1/messages`, `/chat/completions` | 200k ctx; `-xhigh` has 8K cache threshold |
+| `claude-opus-4.7-1m-internal` | `/v1/messages`, `/chat/completions` | 1000k ctx |
+| `claude-opus-4.6` / `-1m` | `/v1/messages`, `/chat/completions` | |
+| `claude-sonnet-4.6` | `/v1/messages`, `/chat/completions` | |
+| `gpt-5.5` | `/responses` | Same tool support as gpt-5.4 |
+| `gpt-5.4` / `-mini` | `/responses` | |
+| `gemini-3.1-pro-preview` | `/chat/completions` | |
+
 ## Execution Path Selection
 
 For `POST /v1/messages`, the handler selects a strategy based on the model's `supported_endpoints`:

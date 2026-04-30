@@ -15,6 +15,8 @@ The proxy does not currently disable Responses vision wholesale because the same
 
 On March 11, 2026, `POST /responses` succeeded against the current enterprise Copilot endpoint, but `POST /responses/input_tokens`, `GET /responses/{id}`, `GET /responses/{id}/input_items`, and `DELETE /responses/{id}` all returned upstream `404`. The proxy exposes those routes because they are part of the official Responses surface, but current Copilot upstream support is not there yet. The same live matrix also showed `previous_response_id` returning upstream `400 previous_response_id is not supported` on the tested model.
 
+Re-verified April 30, 2026 with `gpt-5.5` — same results: `input_tokens` and resource routes still return `404`, `previous_response_id` still rejected.
+
 ## Input Sanitization Policies
 
 The proxy applies several input mutations before forwarding `/v1/responses` requests to Copilot. These are implemented in `applyResponsesInputPolicies()` in `src/routes/responses/handler.ts`:

@@ -71,6 +71,18 @@ const messagesToolCases: ToolCase[] = [
     tools: [{ type: 'web_search_20250305', name: 'web_search' }],
   },
   {
+    name: 'web_search_20260209',
+    tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+  },
+  {
+    name: 'web_fetch_20250910',
+    tools: [{ type: 'web_fetch_20250910', name: 'web_fetch' }],
+  },
+  {
+    name: 'web_fetch_20260209',
+    tools: [{ type: 'web_fetch_20260209', name: 'web_fetch' }],
+  },
+  {
     name: 'memory_20250818',
     tools: [{ type: 'memory_20250818', name: 'memory' }],
   },
@@ -99,10 +111,26 @@ const messagesToolCases: ToolCase[] = [
     name: 'tool_search_tool_regex_20251119',
     tools: [{ type: 'tool_search_tool_regex_20251119', name: 'tool_search_tool_regex' }],
   },
+  {
+    name: 'mcp_toolset',
+    tools: [{ type: 'mcp_toolset', name: 'mcp_toolset', server_label: 'test' }],
+  },
+  {
+    name: 'mcp-client-2025-11-20',
+    tools: [{ type: 'mcp-client-2025-11-20', name: 'mcp_client', server_label: 'test' }],
+  },
   // Anthropic tools NOT in Copilot's tag list
   {
     name: 'code_execution_20250522',
     tools: [{ type: 'code_execution_20250522', name: 'code_execution' }],
+  },
+  {
+    name: 'code_execution_20250825',
+    tools: [{ type: 'code_execution_20250825', name: 'code_execution' }],
+  },
+  {
+    name: 'code_execution_20260120',
+    tools: [{ type: 'code_execution_20260120', name: 'code_execution' }],
   },
   {
     name: 'computer_20250124',
