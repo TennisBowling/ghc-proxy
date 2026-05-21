@@ -17,6 +17,11 @@ function setModelRewrites(rules: Array<{ from: string, to: string }>) {
   config.modelRewrites = rules
 }
 
+function setContextUpgradeRules(rules: Array<{ from: string, to: string }>) {
+  const config = getCachedConfig() as Record<string, unknown>
+  config.contextUpgradeRules = rules
+}
+
 beforeEach(() => {
   originalModels = modelCache.getModels()
   modelCache.cacheModels(buildModelsResponse(
@@ -273,41 +278,58 @@ describe('isContextLengthError', () => {
 // ── resolveContextUpgrade ──
 
 describe('resolveContextUpgrade', () => {
-  test('upgrades claude-opus-4.6 above threshold', () => {
+  test('skips when no context upgrade rule is configured', () => {
+    expect(resolveContextUpgrade('claude-opus-4.6', 200_000)).toBeUndefined()
+  })
+
+  test('upgrades above threshold using configured rule', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }])
     expect(resolveContextUpgrade('claude-opus-4.6', 200_000)).toBe('claude-opus-4.6-1m')
   })
 
   test('skips below threshold', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }])
     expect(resolveContextUpgrade('claude-opus-4.6', 100_000)).toBeUndefined()
   })
 
   test('skips at exact threshold', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }])
     expect(resolveContextUpgrade('claude-opus-4.6', 160_000)).toBeUndefined()
   })
 
   test('skips unknown models', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }])
     expect(resolveContextUpgrade('claude-sonnet-4.5', 200_000)).toBeUndefined()
   })
 
-  test('skips when target model not in models list', () => {
-    modelCache.cacheModels(buildModelsResponse(buildModel('claude-opus-4.6')))
-    expect(resolveContextUpgrade('claude-opus-4.6', 200_000)).toBeUndefined()
+  test('trusts configured targets that are not in the models list', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.7', to: 'claude-opus-4.7-1m-internal' }])
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-opus-4.7')))
+    expect(resolveContextUpgrade('claude-opus-4.7', 200_000)).toBe('claude-opus-4.7-1m-internal')
+  })
+
+  test('supports glob-based configured rules', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.*', to: 'claude-opus-4.7-1m-internal' }])
+    expect(resolveContextUpgrade('claude-opus-4.7', 200_000)).toBe('claude-opus-4.7-1m-internal')
   })
 })
 
 // ── getContextUpgradeTarget ──
 
 describe('getContextUpgradeTarget', () => {
-  test('returns target for claude-opus-4.6', () => {
+  test('returns configured target', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }])
     expect(getContextUpgradeTarget('claude-opus-4.6')).toBe('claude-opus-4.6-1m')
   })
 
   test('returns undefined for unknown models', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }])
     expect(getContextUpgradeTarget('claude-sonnet-4.5')).toBeUndefined()
   })
 
-  test('returns undefined when target not in models list', () => {
-    modelCache.cacheModels(buildModelsResponse(buildModel('claude-opus-4.6')))
-    expect(getContextUpgradeTarget('claude-opus-4.6')).toBeUndefined()
+  test('returns configured target even when target is not in models list', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.7', to: 'claude-opus-4.7-1m-internal' }])
+    modelCache.cacheModels(buildModelsResponse(buildModel('claude-opus-4.7')))
+    expect(getContextUpgradeTarget('claude-opus-4.7')).toBe('claude-opus-4.7-1m-internal')
   })
 })

@@ -149,6 +149,7 @@ Messages route is more complex with multiple strategies in `strategies/` subdire
 `docs/design/` contains architecture and design documents. When making architectural changes, update the relevant docs to keep them in sync with the code.
 
 Key references:
+- `docs/solutions/` — documented solutions to past problems, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
 - `docs/messages-routing-and-translation.md` — Routing logic for `/v1/messages`
 - `docs/anthropic-translation-matrix.md` — Translation coverage between protocols
 - `docs/design/model-routing.md` — Model pipeline design and context upgrade mechanics

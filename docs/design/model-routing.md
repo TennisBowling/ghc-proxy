@@ -99,11 +99,7 @@ If Copilot returns a context-length error at runtime, the proxy catches it and r
 
 ### Upgrade Rules
 
-Defined in `src/lib/model-rewrite.ts` as `CONTEXT_UPGRADE_RULES`:
-
-| From | To |
-|------|----|
-| `claude-opus-4.6` | `claude-opus-4.6-1m` |
+Upgrade rules are configured in `config.json` via `contextUpgradeRules`. Rules are evaluated in order, the `from` field supports `*` glob patterns, and the first match wins. Configured targets are trusted even when the target is not present in Copilot's `/models` response, which lets enterprise users opt into internal rollout models without affecting other users.
 
 ### Configuration
 
@@ -112,12 +108,16 @@ Context upgrade is controlled by these config options:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `contextUpgrade` | `boolean` | `true` | Enable/disable all three context upgrade signals |
+| `contextUpgradeRules` | `{ from, to }[]` | `[]` | Glob-based model upgrade rules |
 | `contextUpgradeTokenThreshold` | `number` | `160000` | Token count threshold for proactive upgrade (Signal 2) |
 
 Example `config.json`:
 ```json
 {
   "contextUpgrade": true,
+  "contextUpgradeRules": [
+    { "from": "claude-opus-4.6", "to": "claude-opus-4.6-1m" }
+  ],
   "contextUpgradeTokenThreshold": 160000
 }
 ```

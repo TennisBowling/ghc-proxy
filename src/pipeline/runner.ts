@@ -118,7 +118,7 @@ export async function runPipeline<TPayload, TStrategyCtx>(
           ? { ...payload, model } as TPayload
           : payload
         const currentModel = isRetry
-          ? modelCache.findById(model)
+          ? modelCache.findById(model) ?? selectedModel
           : selectedModel
 
         const ctx = config.buildStrategyContext({

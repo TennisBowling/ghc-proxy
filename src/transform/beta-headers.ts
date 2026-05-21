@@ -1,7 +1,7 @@
 import type { ModelTransformStep } from './types'
 
 import { getContextUpgradeTarget } from '~/lib/model-rewrite'
-import { configStore } from '~/state'
+import { configStore, modelCache } from '~/state'
 import { CONTEXT_BETA_RE } from './constants'
 
 export interface BetaHeaderResult {
@@ -43,7 +43,7 @@ export function processAnthropicBetaHeader(
 
 export const betaHeaderStep: ModelTransformStep = {
   tag: 'BETA_UPGRADE',
-  apply({ model, headers }) {
+  apply({ model, headers, resolvedModel }) {
     if (!headers)
       return null
     const betaHeader = headers.get('anthropic-beta')
@@ -52,6 +52,8 @@ export const betaHeaderStep: ModelTransformStep = {
       return null
     return {
       model: result.upgradeTarget,
+      tag: 'BETA_UPGRADE',
+      resolvedModel: modelCache.findById(result.upgradeTarget) ?? resolvedModel ?? modelCache.findById(model),
       mutatePayload(payload: unknown) {
         if (payload && typeof payload === 'object' && 'model' in payload)
           (payload as Record<string, unknown>).model = result.upgradeTarget

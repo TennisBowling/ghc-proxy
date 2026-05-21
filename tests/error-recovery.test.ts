@@ -52,6 +52,8 @@ describe('executeWithContextRetry', () => {
       buildModel('claude-sonnet-4.5'),
     ))
     clearConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    config.contextUpgradeRules = [{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }]
   })
 
   afterEach(() => {
@@ -95,6 +97,16 @@ describe('executeWithContextRetry', () => {
     expect(callCount).toBe(2)
   })
 
+  test('context error without configured upgrade rule — error re-thrown', async () => {
+    const config = getCachedConfig() as Record<string, unknown>
+    config.contextUpgradeRules = []
+
+    const executeFn = () => Promise.reject(makeContextLengthError())
+
+    await expect(
+      executeWithContextRetry(executeFn, makeModelInfo('claude-opus-4.6')),
+    ).rejects.toBeInstanceOf(HTTPError)
+  })
   test('context error with no upgrade target — error re-thrown', async () => {
     const executeFn = () => Promise.reject(makeContextLengthError())
 

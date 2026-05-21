@@ -56,6 +56,7 @@ describe('config module', () => {
       modelFallback: {
         claudeOpus: 'gpt-4-opus',
       },
+      contextUpgradeRules: [{ from: 'claude-opus-4.7', to: 'claude-opus-4.7-1m-internal' }],
       upstreamQueueConcurrency: 12,
       upstreamQueueMaxRetries: 4,
       upstreamQueueBaseDelaySeconds: 3,
@@ -308,6 +309,20 @@ describe('ConfigStore accessors', () => {
     expect(configStore.getModelRewrites()).toEqual(rewrites)
   })
 
+  // ── getContextUpgradeRules ──
+
+  test('getContextUpgradeRules returns empty array by default', () => {
+    clearCachedConfig()
+    expect(configStore.getContextUpgradeRules()).toEqual([])
+  })
+
+  test('getContextUpgradeRules returns configured array', () => {
+    clearCachedConfig()
+    const config = getCachedConfig() as Record<string, unknown>
+    const rules = [{ from: 'claude-opus-4.7', to: 'claude-opus-4.7-1m-internal' }]
+    config.contextUpgradeRules = rules
+    expect(configStore.getContextUpgradeRules()).toEqual(rules)
+  })
   // ── getModelFallback ──
 
   test('getModelFallback returns undefined by default', () => {

@@ -33,6 +33,7 @@ const configFileSchema = z.object({
   responsesOfficialEmulatorTtlSeconds: z.number().int().positive().optional(),
   modelReasoningEfforts: z.record(z.string(), reasoningEffortSchema).optional(),
   modelRewrites: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
+  contextUpgradeRules: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
   contextUpgrade: z.boolean().optional(),
   contextUpgradeTokenThreshold: z.number().int().positive().optional(),
   upstreamQueueConcurrency: z.number().int().positive().optional(),

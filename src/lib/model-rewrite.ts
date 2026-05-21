@@ -92,32 +92,24 @@ function matchesGlob(pattern: string, value: string): boolean {
   return regex.test(value)
 }
 
-// ── Context upgrade rules (moved from context-upgrade.ts) ──
-
-/** Data-driven upgrade rules. Add new entries to extend. */
-const CONTEXT_UPGRADE_RULES: ReadonlyArray<{
-  from: string
-  to: string
-}> = [
-  { from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' },
-]
-
-/** Pre-computed set for fast model eligibility checks (avoids token estimation on non-eligible models). */
-const UPGRADE_ELIGIBLE_MODELS = new Set(CONTEXT_UPGRADE_RULES.map(r => r.from))
+// ── Config-driven context upgrade rules ──
 
 /**
- * Quick check: does this model have any context-upgrade rules?
+ * Quick check: does this model have any configured context-upgrade rules?
  * Use to skip expensive token estimation for ineligible models.
  */
 export function hasContextUpgradeRule(model: string): boolean {
-  return UPGRADE_ELIGIBLE_MODELS.has(model)
+  return configStore.getContextUpgradeRules().some(rule => matchesGlob(rule.from, model))
 }
 
-/** Find the upgrade rule for a model whose target exists in Copilot's model list. */
+/** Find the first configured upgrade rule for a model. */
 function findUpgradeRule(model: string) {
-  for (const rule of CONTEXT_UPGRADE_RULES) {
-    if (model === rule.from && modelCache.findById(rule.to)) {
-      return rule
+  for (const rule of configStore.getContextUpgradeRules()) {
+    if (matchesGlob(rule.from, model)) {
+      return {
+        from: rule.from,
+        to: normalizeToKnownModel(rule.to) ?? rule.to,
+      }
     }
   }
   return undefined

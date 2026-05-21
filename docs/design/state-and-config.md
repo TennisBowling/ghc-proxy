@@ -85,6 +85,7 @@ configStore.isContextManagementEnabled() // responsesApiAutoContextManagement
 configStore.isContextManagementModel(model) // responsesApiContextManagementModels
 configStore.getReasoningEffort(model) // modelReasoningEfforts
 configStore.getModelRewrites() // modelRewrites
+configStore.getContextUpgradeRules() // contextUpgradeRules
 configStore.getModelFallback() // modelFallback
 configStore.getUpstreamQueueConcurrency() // upstreamQueueConcurrency
 configStore.getUpstreamQueueMaxRetries() // upstreamQueueMaxRetries
@@ -119,6 +120,7 @@ interface ConfigFile {
 
   // Context upgrade
   contextUpgrade?: boolean // Enable/disable context upgrade signals
+  contextUpgradeRules?: Array<{ from: string, to: string }> // Glob-based context upgrade rules
   contextUpgradeTokenThreshold?: number // Token count threshold for proactive upgrade
 
   // Responses API
