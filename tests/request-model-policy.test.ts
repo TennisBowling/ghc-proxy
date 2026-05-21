@@ -101,6 +101,22 @@ describe('applyMessagesModelPolicy — betaUpgraded', () => {
     expect(result.reason).toBe('compact')
   })
 
+  test('context upgrade uses configured rule for large payloads', () => {
+    const config = getCachedConfig() as Record<string, unknown>
+    config.contextUpgradeRules = [{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }]
+
+    const payload = {
+      model: 'claude-opus-4.6',
+      max_tokens: 8192,
+      messages: [{ role: 'user', content: 'a'.repeat(700_000) }],
+    } as AnthropicMessagesPayload
+
+    const result = applyMessagesModelPolicy(payload)
+
+    expect(result.routedModel).toBe('claude-opus-4.6-1m')
+    expect(result.reason).toBe('context-upgrade')
+    expect(payload.model).toBe('claude-opus-4.6-1m')
+  })
   test('skips context upgrade when betaUpgraded is true', () => {
     const config = getCachedConfig() as Record<string, unknown>
     config.contextUpgrade = true

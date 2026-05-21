@@ -189,7 +189,8 @@ All fields are optional. The full schema:
 | `modelFallback.claudeHaiku` | `string` | `claude-haiku-4.5` | Fallback for `claude-haiku-*` models |
 | `smallModel` | `string` | -- | Target model for compact request routing (see [Small-Model Routing](#small-model-routing)) |
 | `compactUseSmallModel` | `boolean` | `false` | Route compact/summarization requests to `smallModel` |
-| `contextUpgrade` | `boolean` | `true` | Auto-upgrade to extended-context model variants (see [Context-1M Auto-Upgrade](#context-1m-auto-upgrade)) |
+| `contextUpgrade` | `boolean` | `true` | Enable configured extended-context upgrade rules (see [Context-1M Auto-Upgrade](#context-1m-auto-upgrade)) |
+| `contextUpgradeRules` | `{ from, to }[]` | `[]` | Glob-pattern context upgrade rules used for proactive, reactive, and beta-header upgrades |
 | `contextUpgradeTokenThreshold` | `number` | `160000` | Token threshold for proactive context upgrade |
 | `useFunctionApplyPatch` | `boolean` | `true` | Rewrite `apply_patch` custom tool as function tool on Responses path |
 | `responsesApiAutoCompactInput` | `boolean` | `false` | Automatically trim Responses `input` to the latest `compaction` item |
@@ -213,6 +214,9 @@ Example:
   "smallModel": "gpt-4.1-mini",
   "compactUseSmallModel": true,
   "contextUpgrade": true,
+  "contextUpgradeRules": [
+    { "from": "claude-opus-4.6", "to": "claude-opus-4.6-1m" }
+  ],
   "contextUpgradeTokenThreshold": 160000,
   "useFunctionApplyPatch": true,
   "responsesApiAutoCompactInput": false,
@@ -287,24 +291,44 @@ Rewrites run **before** any other model policy — context upgrades, small-model
 
 ### Context-1M Auto-Upgrade
 
-The proxy can automatically upgrade models to their extended-context (1M token) variants when the request is large. This is enabled by default.
+The proxy can automatically upgrade models to extended-context variants when the request is large. Upgrade targets are config-driven so users only route to models their Copilot account can access.
 
-**Proactive upgrade:** Before sending the request, the proxy estimates the input token count. If it exceeds the configured threshold (default: 160,000 tokens), the model is upgraded to its 1M variant before the request is sent.
+**Proactive upgrade:** Before sending the request, the proxy estimates the input token count. If it exceeds the configured threshold (default: 160,000 tokens), the first matching `contextUpgradeRules` entry is applied before the request is sent.
 
-**Reactive upgrade:** If the upstream returns a context-length error (e.g. "context length exceeded"), the proxy retries the request with the upgraded model automatically.
+**Reactive upgrade:** If the upstream returns a context-length error (e.g. "context length exceeded"), the proxy retries the request with the configured upgraded model automatically.
 
-**Beta header support:** When a client sends an `anthropic-beta: context-*` header (e.g. `context-1m-2025-04-14`), the proxy strips the header (Copilot does not understand it) and upgrades the model to the 1M variant instead.
-
-Current upgrade rules:
-
-| Source Model | Upgraded Model |
-|-------------|----------------|
-| `claude-opus-4.6` | `claude-opus-4.6-1m` |
+**Beta header support:** When a client sends an `anthropic-beta: context-*` header (e.g. `context-1m-2025-04-14`), the proxy strips the header (Copilot does not understand it) and applies the configured context upgrade rule instead.
 
 Configuration:
 
-- `contextUpgrade` (boolean, default `true`) — enable or disable auto-upgrade
+- `contextUpgrade` (boolean, default `true`) — enable or disable configured auto-upgrade rules
+- `contextUpgradeRules` (`{ from, to }[]`, default `[]`) — glob-pattern model upgrade rules; first match wins
 - `contextUpgradeTokenThreshold` (number, default `160000`) — token count threshold for proactive upgrade
+
+Example for the public Opus 4.6 1M model:
+
+```json
+{
+  "contextUpgradeRules": [
+    { "from": "claude-opus-4.6", "to": "claude-opus-4.6-1m" }
+  ]
+}
+```
+
+Example for an enterprise account with access to the Opus 4.7 internal 1M model:
+
+```json
+{
+  "modelRewrites": [
+    { "from": "claude-opus-*", "to": "claude-opus-4.7" }
+  ],
+  "contextUpgrade": true,
+  "contextUpgradeRules": [
+    { "from": "claude-opus-4.7", "to": "claude-opus-4.7-1m-internal" }
+  ],
+  "contextUpgradeTokenThreshold": 160000
+}
+```
 
 ### Small-Model Routing
 

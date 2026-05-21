@@ -64,6 +64,10 @@ export class ConfigStore {
     return getCachedConfig().modelRewrites ?? []
   }
 
+  getContextUpgradeRules(): Array<{ from: string, to: string }> {
+    return getCachedConfig().contextUpgradeRules ?? []
+  }
+
   getModelFallback() {
     return getCachedConfig().modelFallback
   }

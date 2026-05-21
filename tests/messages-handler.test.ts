@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { getCachedConfig } from '~/lib/config'
 import { modelCache } from '~/state'
 import { processAnthropicBetaHeader } from '~/transform/beta-headers'
 
 import { buildModel, buildModelsResponse, clearConfig } from './helpers'
+
+function setContextUpgradeRules(rules: Array<{ from: string, to: string }>) {
+  const config = getCachedConfig() as Record<string, unknown>
+  config.contextUpgradeRules = rules
+}
 
 // ── Setup / Teardown ──
 
@@ -45,12 +51,14 @@ describe('processAnthropicBetaHeader', () => {
   })
 
   test('strips context-* beta and upgrades when model has upgrade target', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }])
     const result = processAnthropicBetaHeader('context-1m-2025-01-01', 'claude-opus-4.6')
     expect(result.header).toBeUndefined()
     expect(result.upgradeTarget).toBe('claude-opus-4.6-1m')
   })
 
   test('preserves non-context betas in header', () => {
+    setContextUpgradeRules([{ from: 'claude-opus-4.6', to: 'claude-opus-4.6-1m' }])
     const result = processAnthropicBetaHeader(
       'context-1m-2025-01-01,max-tokens-3-5-sonnet-2024-07-15',
       'claude-opus-4.6',
