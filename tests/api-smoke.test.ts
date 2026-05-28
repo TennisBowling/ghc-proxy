@@ -13,6 +13,7 @@ import { CopilotClient } from '~/clients'
 import { getCachedConfig } from '~/lib/config'
 import { modelCache } from '~/state'
 import {
+  buildGptModel,
   buildModel,
   buildModelsResponse,
   buildResponsesResult,
@@ -469,6 +470,7 @@ describe('API smoke', () => {
         reasoning_effort: 'high',
         response_format: { type: 'json_object' },
         seed: 7,
+        verbosity: 'max',
         messages: [
           { role: 'developer', content: 'Follow repo conventions.' },
           { role: 'user', content: 'Open src/main.ts' },
@@ -499,6 +501,7 @@ describe('API smoke', () => {
     expect(calls[0]?.payload.thinking_budget).toBe(12000)
     expect(calls[0]?.payload.response_format).toEqual({ type: 'json_object' })
     expect(calls[0]?.payload.seed).toBe(7)
+    expect(calls[0]?.payload.output_config).toEqual({ effort: 'max' })
     expect(calls[0]?.options?.initiator).toBe('user')
     expect(calls[0]?.options?.requestContext).toMatchObject({
       interactionType: 'conversation-user',
@@ -522,6 +525,150 @@ describe('API smoke', () => {
     expect(Object.hasOwn(json.choices[0]!.message as object, 'reasoning_opaque')).toBe(false)
     expect(Object.hasOwn(json.choices[0]!.message as object, 'encrypted_content')).toBe(false)
     expect(Object.hasOwn(json.choices[0]!.message as object, 'copilot_annotations')).toBe(false)
+  })
+
+  test('OpenRouter-style chat uses Responses backend for Responses-only models and preserves reasoning details', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    modelCache.cacheModels(buildModelsResponse(buildGptModel('gpt-5.5', {
+      supported_endpoints: ['/responses'],
+    })))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_chat_1',
+      model: 'gpt-5.5',
+      status: 'completed',
+      output: [
+        {
+          id: 'rs_2',
+          type: 'reasoning',
+          status: 'completed',
+          summary: [{ type: 'summary_text', text: 'Compared decimal places.' }],
+          encrypted_content: 'encrypted-state-2',
+        },
+        {
+          id: 'msg_2',
+          type: 'message',
+          role: 'assistant',
+          status: 'completed',
+          content: [{ type: 'output_text', text: '9.9 is larger.', annotations: [] }],
+        },
+      ],
+      output_text: '9.9 is larger.',
+      usage: {
+        input_tokens: 12,
+        output_tokens: 24,
+        total_tokens: 36,
+        input_tokens_details: { cached_tokens: 3 },
+        output_tokens_details: { reasoning_tokens: 10 },
+      },
+    }), calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-5.5',
+        temperature: 0.1,
+        reasoning: { effort: 'xhigh' },
+        messages: [
+          { role: 'user', content: 'Compare 9.11 and 9.9' },
+          {
+            role: 'assistant',
+            content: 'Previous answer.',
+            reasoning: 'Old summary.',
+            reasoning_details: [
+              { type: 'reasoning.summary', summary: 'Old summary.', format: 'openai-responses-v1', index: 0 },
+              { type: 'reasoning.encrypted', data: 'encrypted-state-1', id: 'rs_1', format: 'openai-responses-v1', index: 1 },
+            ],
+          },
+          { role: 'user', content: 'Continue.' },
+        ],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    const json = await response.json() as ChatCompletionResponse
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.payload.model).toBe('gpt-5.5')
+    expect(calls[0]?.payload.reasoning).toEqual({ effort: 'xhigh', summary: 'detailed' })
+    expect(calls[0]?.payload.include).toEqual(['reasoning.encrypted_content'])
+    expect(calls[0]?.payload.temperature).toBeUndefined()
+    expect(calls[0]?.payload.input).toContainEqual({
+      type: 'reasoning',
+      id: 'rs_1',
+      summary: [{ type: 'summary_text', text: 'Old summary.' }],
+      encrypted_content: 'encrypted-state-1',
+    })
+
+    expect(json.object).toBe('chat.completion')
+    expect(json.choices[0]?.message.content).toBe('9.9 is larger.')
+    expect(json.choices[0]?.message.reasoning).toBe('Compared decimal places.')
+    expect(json.choices[0]?.message.reasoning_details).toEqual([
+      {
+        type: 'reasoning.summary',
+        summary: 'Compared decimal places.',
+        format: 'openai-responses-v1',
+        index: 0,
+      },
+      {
+        type: 'reasoning.encrypted',
+        data: 'encrypted-state-2',
+        format: 'openai-responses-v1',
+        id: 'rs_2',
+        index: 1,
+      },
+    ])
+    expect(json.usage?.completion_tokens_details?.reasoning_tokens).toBe(10)
+  })
+
+  test('OpenRouter-style file content routes to Responses backend when available', async () => {
+    const app = createApp()
+    const calls: Array<CapturedResponsesCall> = []
+    modelCache.cacheModels(buildModelsResponse(buildGptModel('gpt-5.5', {
+      supported_endpoints: ['/responses', '/chat/completions'],
+    })))
+
+    CopilotClient.prototype.createResponses = mockResponses(buildResponsesResult({
+      id: 'resp_file_1',
+      model: 'gpt-5.5',
+      status: 'completed',
+      output: [{
+        id: 'msg_file_1',
+        type: 'message',
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: 'PDF summary.', annotations: [] }],
+      }],
+      output_text: 'PDF summary.',
+    }), calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-5.5',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Summarize this PDF.' },
+            { type: 'file', file: { filename: 'doc.pdf', file_data: 'data:application/pdf;base64,abc' } },
+          ],
+        }],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.payload.input).toEqual([{
+      type: 'message',
+      role: 'user',
+      content: [
+        { type: 'input_text', text: 'Summarize this PDF.' },
+        { type: 'input_file', filename: 'doc.pdf', file_data: 'data:application/pdf;base64,abc' },
+      ],
+    }])
   })
 
   test('OpenAI route rejects malformed completion options before upstream call', async () => {
@@ -655,7 +802,7 @@ describe('API smoke', () => {
     ])
   })
 
-  test('OpenAI streaming preserves public reasoning_text but does not leak Copilot-private fields', async () => {
+  test('OpenRouter-style streaming maps reasoning while not leaking Copilot-private fields', async () => {
     const app = createApp()
     const calls: Array<CapturedChatCall> = []
 
@@ -761,7 +908,13 @@ describe('API smoke', () => {
     expect(calls[0]?.payload.reasoning_effort).toBe('low')
     expect(calls[0]?.payload.thinking_budget).toBe(8000)
 
-    expect(chunks[0]?.choices[0]?.delta.reasoning_text).toBe('Need to inspect before writing.')
+    expect(chunks[0]?.choices[0]?.delta.reasoning).toBe('Need to inspect before writing.')
+    expect(chunks[0]?.choices[0]?.delta.reasoning_details?.[0]).toMatchObject({
+      type: 'reasoning.text',
+      text: 'Need to inspect before writing.',
+      format: 'anthropic-claude-v1',
+    })
+    expect(Object.hasOwn(chunks[0]!.choices[0]!.delta as object, 'reasoning_text')).toBe(false)
     expect(Object.hasOwn(chunks[0]!.choices[0]!.delta as object, 'reasoning_opaque')).toBe(false)
     expect(Object.hasOwn(chunks[0]!.choices[0]!.delta as object, 'encrypted_content')).toBe(false)
     expect(Object.hasOwn(chunks[0]!.choices[0]!.delta as object, 'copilot_annotations')).toBe(false)

@@ -3,6 +3,7 @@ import type {
   ChatCompletionResponse,
   ChatCompletionsPayload,
   Message,
+  ReasoningDetail,
   Tool,
   ToolCall,
 } from '~/types'
@@ -27,7 +28,11 @@ export interface CopilotCacheControl {
 }
 
 export interface CapiStreamOptions {
-  include_usage?: boolean
+  include_usage?: boolean | null
+}
+
+export interface CapiOutputConfig {
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 
 export interface CapiMessage extends Omit<Message, 'tool_calls'> {
@@ -36,6 +41,7 @@ export interface CapiMessage extends Omit<Message, 'tool_calls'> {
   reasoning_text?: string | null
   reasoning_opaque?: string
   encrypted_content?: string | null
+  reasoning_details?: Array<ReasoningDetail>
   phase?: string
   copilot_annotations?: unknown
 }
@@ -45,10 +51,11 @@ export interface CapiTool extends Tool {
 }
 
 export interface CapiChatCompletionsPayload
-  extends Omit<ChatCompletionsPayload, 'messages' | 'tools'> {
+  extends Omit<ChatCompletionsPayload, 'messages' | 'tools' | 'stream_options'> {
   messages: Array<CapiMessage>
   tools?: Array<CapiTool> | null
   stream_options?: CapiStreamOptions | null
+  output_config?: CapiOutputConfig
 }
 
 export interface CapiResponseMessage
@@ -57,6 +64,7 @@ export interface CapiResponseMessage
   reasoning_text?: string | null
   reasoning_opaque?: string
   encrypted_content?: string | null
+  reasoning_details?: Array<ReasoningDetail>
   phase?: string
   copilot_annotations?: unknown
 }
@@ -80,6 +88,7 @@ export interface CapiChunkDelta
   reasoning_text?: string | null
   reasoning_opaque?: string
   encrypted_content?: string | null
+  reasoning_details?: Array<ReasoningDetail>
   phase?: string
   copilot_annotations?: unknown
 }

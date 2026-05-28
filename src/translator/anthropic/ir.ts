@@ -94,7 +94,7 @@ export interface NormalizedOpenAIResponse {
   id: string
   model: string
   turn: NormalizedTurn
-  finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | null
+  finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | null
   usage?: {
     prompt_tokens?: number
     completion_tokens?: number

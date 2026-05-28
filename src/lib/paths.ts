@@ -1,14 +1,20 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import process from 'node:process'
 
-const APP_DIR = path.join(os.homedir(), '.local', 'share', 'ghc-proxy')
-
-const CONFIG_PATH = path.join(APP_DIR, 'config.json')
+function getAppDir(): string {
+  return process.env.GHC_PROXY_APP_DIR
+    || path.join(os.homedir(), '.local', 'share', 'ghc-proxy')
+}
 
 export const PATHS = {
-  APP_DIR,
-  CONFIG_PATH,
+  get APP_DIR() {
+    return getAppDir()
+  },
+  get CONFIG_PATH() {
+    return path.join(getAppDir(), 'config.json')
+  },
 }
 
 export async function ensurePaths(): Promise<void> {

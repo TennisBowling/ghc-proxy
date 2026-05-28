@@ -1,4 +1,4 @@
-import type { ReasoningEffort } from '~/types'
+import type { ReasoningDetail, ReasoningEffort, ResponseFormat, Verbosity } from '~/types'
 
 export type ConversationRole
   = | 'system'
@@ -54,8 +54,10 @@ export type ConversationBlock
 
 export interface ConversationTurnMeta {
   toolCallId?: string
+  reasoningText?: string | null
   reasoningOpaque?: string
   encryptedContent?: string | null
+  reasoningDetails?: Array<ReasoningDetail>
   phase?: string
   copilotAnnotations?: unknown
 }
@@ -93,8 +95,11 @@ export interface CompletionOptions {
   presencePenalty?: number
   logitBias?: Record<string, number>
   logprobs?: boolean
-  responseFormat?: { type: 'json_object' }
+  responseFormat?: ResponseFormat
   seed?: number
+  topLogprobs?: number
+  parallelToolCalls?: boolean
+  verbosity?: Verbosity
   /** Explicit reasoning effort. Overrides value inferred from thinking.budgetTokens. */
   reasoningEffort?: ReasoningEffort
 }

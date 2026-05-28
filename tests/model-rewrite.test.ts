@@ -27,6 +27,8 @@ beforeEach(() => {
   modelCache.cacheModels(buildModelsResponse(
     buildModel('claude-opus-4.6'),
     buildModel('claude-opus-4.6-1m'),
+    buildModel('claude-opus-4.7'),
+    buildModel('claude-opus-4.7-1m-internal'),
     buildModel('claude-sonnet-4.5'),
   ))
   clearConfig()
@@ -64,6 +66,13 @@ describe('rewriteModel — normalization', () => {
     expect(result.model).toBe('claude-opus-4.6-1m')
     expect(result.originalModel).toBe('claude-opus-4-6-1m')
     expect(result.model).not.toBe(result.originalModel)
+  })
+
+  test('temporary alias maps claude-opus-4.7 to 1m internal', () => {
+    const result = rewriteModel('claude-opus-4.7')
+    expect(result.model).toBe('claude-opus-4.7-1m-internal')
+    expect(result.originalModel).toBe('claude-opus-4.7')
+    expect(result.reason).toBe('AUTO_CORRECT')
   })
 
   test('unknown model passes through unchanged', () => {

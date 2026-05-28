@@ -46,6 +46,11 @@ function normalizeContentPart(part: ContentPart): NormalizedBlock {
         data,
       }
     }
+    case 'file':
+      return {
+        kind: 'text',
+        text: `[unsupported file content omitted: ${part.file.filename ?? part.file.file_id ?? 'file'}]`,
+      }
   }
 }
 

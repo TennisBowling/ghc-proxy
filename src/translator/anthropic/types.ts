@@ -297,6 +297,7 @@ export interface AnthropicStreamState {
     | 'length'
     | 'tool_calls'
     | 'content_filter'
+    | 'error'
     | null
   lastMetadata?: {
     reasoningOpaque?: string

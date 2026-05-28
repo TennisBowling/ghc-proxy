@@ -32,25 +32,21 @@ const getCopilotTokenMock = mock(() =>
   Promise.resolve({ token: 'test-token', refresh_in: 1800 }),
 )
 
-await mock.module('../src/clients/github-client', () => ({
-  GitHubClient: class {
-    constructor(_auth?: unknown, _config?: unknown) {}
-    getGitHubUser = () => Promise.resolve({ login: 'test-user' })
-    getDeviceCode = () =>
-      Promise.resolve({
-        user_code: '1234',
-        verification_uri: 'http://test',
-        device_code: 'dc',
-        expires_in: 60,
-        interval: 1,
-      })
+function okJson(data: unknown): Response {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+}
 
-    pollAccessToken = () => Promise.resolve('test-token')
-    getCopilotToken = () => getCopilotTokenMock()
-    getCopilotUsage = () =>
-      Promise.resolve({ seat_breakdown: {}, total_suggestions_count: 0 })
-  },
-}))
+const fetchMock = mock(async (input: Parameters<typeof fetch>[0]) => {
+  const url = String(input)
+  if (url.endsWith('/copilot_internal/v2/token')) {
+    return okJson(await getCopilotTokenMock())
+  }
+
+  return new Response(`Unexpected test URL: ${url}`, { status: 404 })
+})
 
 const { GitHubClient } = await import('../src/clients/github-client')
 const { refreshCopilotToken } = await import('../src/lib/token')
@@ -59,6 +55,7 @@ const { authStore, modelCache } = await import('../src/state')
 describe('refreshCopilotToken', () => {
   beforeEach(() => {
     getCopilotTokenMock.mockClear()
+    fetchMock.mockClear()
     sleepMock.mockClear()
     mockConsola.debug.mockClear()
     mockConsola.warn.mockClear()
@@ -81,7 +78,7 @@ describe('refreshCopilotToken', () => {
   })
 
   function createClient() {
-    return new GitHubClient(authStore, { accountType: 'individual' })
+    return new GitHubClient(authStore, { accountType: 'individual' }, { fetch: fetchMock as unknown as typeof fetch })
   }
 
   test('successful refresh updates state', async () => {

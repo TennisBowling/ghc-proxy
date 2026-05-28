@@ -14,6 +14,7 @@ import { generateEnvScript } from './lib/shell'
 import { printStartupBanner } from './lib/startup-banner'
 import { cacheModels, cacheVSCodeVersion, configureUpstreamRequestQueue, createCopilotClient } from './lib/state'
 import { setupCopilotToken, setupGitHubToken } from './lib/token'
+import { cleanupPdfCache } from './routes/chat-completions/pdf-preprocessor'
 import { createServer } from './server'
 
 interface RunServerOptions {
@@ -174,6 +175,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   const shutdown = async () => {
     consola.info('Shutting down gracefully...')
     tokenCleanup()
+    await cleanupPdfCache()
     await app.stop()
     process.exit(0)
   }

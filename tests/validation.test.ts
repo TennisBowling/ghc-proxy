@@ -37,6 +37,7 @@ describe('OpenAI payload validation', () => {
       response_format: { type: 'json_object' },
       seed: 42,
       reasoning_effort: 'high',
+      verbosity: 'max',
       tools: [
         {
           type: 'function',
@@ -58,6 +59,7 @@ describe('OpenAI payload validation', () => {
     expect(payload.response_format).toEqual({ type: 'json_object' })
     expect(payload.seed).toBe(42)
     expect(payload.reasoning_effort).toBe('high')
+    expect(payload.verbosity).toBe('max')
   })
 
   test('rejects malformed completion option types', () => {
@@ -78,17 +80,31 @@ describe('OpenAI payload validation', () => {
     ).toThrow('Invalid request payload')
   })
 
-  test('rejects unsupported response_format shapes', () => {
-    expect(() =>
-      parseOpenAIChatPayload({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: 'Hello!' }],
-        response_format: { type: 'json_schema' },
-      }),
-    ).toThrow('Invalid request payload')
+  test('accepts OpenRouter JSON schema response_format', () => {
+    const payload = parseOpenAIChatPayload({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'Hello!' }],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'answer',
+          strict: true,
+          schema: { type: 'object' },
+        },
+      },
+    })
+
+    expect(payload.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: {
+        name: 'answer',
+        strict: true,
+        schema: { type: 'object' },
+      },
+    })
   })
 
-  test('normalizes response_format to the supported JSON mode shape', () => {
+  test('preserves response_format JSON mode extras', () => {
     const payload = parseOpenAIChatPayload({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: 'Hello!' }],
@@ -98,7 +114,51 @@ describe('OpenAI payload validation', () => {
       },
     })
 
-    expect(payload.response_format).toEqual({ type: 'json_object' })
+    expect(payload.response_format).toEqual({
+      type: 'json_object',
+      schema: { type: 'object' },
+    })
+  })
+
+  test('accepts OpenRouter file content parts', () => {
+    const payload = parseOpenAIChatPayload({
+      model: 'gpt-5.5',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Summarize this.' },
+          { type: 'file', file: { filename: 'doc.pdf', file_data: 'data:application/pdf;base64,abc' } },
+        ],
+      }],
+    })
+
+    expect(payload.messages[0]?.content).toEqual([
+      { type: 'text', text: 'Summarize this.' },
+      { type: 'file', file: { filename: 'doc.pdf', file_data: 'data:application/pdf;base64,abc' } },
+    ])
+  })
+
+  test('reasoning.effort implies reasoning.enabled unless explicitly set', () => {
+    const enabledPayload = parseOpenAIChatPayload({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'Hello!' }],
+      reasoning: { effort: 'xhigh' },
+    })
+    expect(enabledPayload.reasoning).toEqual({ effort: 'xhigh', enabled: true })
+
+    const disabledPayload = parseOpenAIChatPayload({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'Hello!' }],
+      reasoning: { effort: 'none' },
+    })
+    expect(disabledPayload.reasoning).toEqual({ effort: 'none', enabled: false })
+
+    const explicitPayload = parseOpenAIChatPayload({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'Hello!' }],
+      reasoning: { effort: 'xhigh', enabled: false },
+    })
+    expect(explicitPayload.reasoning).toEqual({ effort: 'xhigh', enabled: false })
   })
 
   test('rejects out-of-range preserved sampling controls', () => {

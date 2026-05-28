@@ -10,6 +10,14 @@ dist/
 /.claude/settings.local.json
 /plans
 
+# local secrets / auth
+.env
+.env.*
+!.env.example
+/config.json
+/github-token
+/.ghc-proxy/
+
 # tools
 .aider*
 .alma-snapshots

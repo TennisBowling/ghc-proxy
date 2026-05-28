@@ -2187,6 +2187,44 @@ describe('responses and routing', () => {
     expect(calls.map(call => call.payload.output_config?.effort)).toEqual(['high', 'high'])
   })
 
+  test('/v1/messages native path converts Claude 4.7 budget thinking to adaptive thinking', async () => {
+    const app = createApp()
+    const calls: Array<CapturedMessagesCall> = []
+    const model = buildModel('claude-opus-4.7-1m-internal', { supported_endpoints: ['/v1/messages'] })
+    model.capabilities.family = 'claude-opus-4.7-1m-internal'
+    model.capabilities.supports.reasoning_effort = ['low', 'medium', 'high', 'xhigh']
+    modelCache.cacheModels(buildModelsResponse(model))
+
+    CopilotClient.prototype.createMessages = mockMessages({
+      id: 'msg_1',
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'native' }],
+      model: 'claude-opus-4.7-1m-internal',
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+      },
+    }, calls)
+
+    const response = await app.handle(new Request('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-4.7-1m-internal',
+        max_tokens: 4096,
+        thinking: { type: 'enabled', budget_tokens: 1024 },
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.payload.thinking).toEqual({ type: 'adaptive' })
+    expect(calls[0]?.payload.output_config).toEqual({ effort: 'xhigh' })
+  })
+
   test('/v1/messages native path uses highest advertised output_config effort', async () => {
     const app = createApp()
     const calls: Array<CapturedMessagesCall> = []

@@ -19,6 +19,7 @@ export type ConversationStopReason
     | 'length'
     | 'tool_calls'
     | 'content_filter'
+    | 'error'
     | null
 
 export type ConversationDelta

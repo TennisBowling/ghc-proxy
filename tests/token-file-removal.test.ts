@@ -7,11 +7,6 @@ const tempDir = await fs.mkdtemp(
   path.join(os.tmpdir(), 'ghc-proxy-test-token-'),
 )
 
-await mock.module('node:os', () => ({
-  ...os,
-  homedir: () => tempDir,
-}))
-
 await mock.module('consola', () => ({
   default: {
     info: mock(() => {}),
@@ -26,28 +21,48 @@ await mock.module('../src/clients/vscode-client', () => ({
   getVSCodeVersion: mock(() => Promise.resolve('1.91.0')),
 }))
 
-await mock.module('../src/clients/github-client', () => ({
-  GitHubClient: class {
-    constructor(_auth?: unknown, _config?: unknown, _deps?: { fetch?: typeof fetch }) {}
+function okJson(data: unknown): Response {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+}
 
-    getGitHubUser = () => Promise.resolve({ login: 'test-user' })
-    getDeviceCode = () =>
-      Promise.resolve({
-        user_code: '1234',
-        verification_uri: 'http://test',
-        device_code: 'dc',
-        expires_in: 60,
-        interval: 1,
-      })
+const originalFetch = globalThis.fetch
+const originalGhcProxyAppDir = process.env.GHC_PROXY_APP_DIR
+process.env.GHC_PROXY_APP_DIR = tempDir
+const fetchMock = mock(async (input: Parameters<typeof fetch>[0]) => {
+  const url = String(input)
+  if (url.endsWith('/login/device/code')) {
+    return okJson({
+      user_code: '1234',
+      verification_uri: 'http://test',
+      device_code: 'dc',
+      expires_in: 60,
+      interval: 1,
+    })
+  }
+  if (url.endsWith('/login/oauth/access_token')) {
+    return okJson({
+      access_token: await mockPollAccessToken(),
+      token_type: 'bearer',
+      scope: '',
+    })
+  }
+  if (url.endsWith('/user')) {
+    return okJson({ login: 'test-user' })
+  }
+  if (url.endsWith('/copilot_internal/v2/token')) {
+    return okJson({ token: 'copilot-token', refresh_in: 1800 })
+  }
+  if (url.endsWith('/copilot_internal/user')) {
+    return okJson({ seat_breakdown: {}, total_suggestions_count: 0 })
+  }
 
-    pollAccessToken = mockPollAccessToken
-    getCopilotToken = () =>
-      Promise.resolve({ token: 'copilot-token', refresh_in: 1800 })
+  return new Response(`Unexpected test URL: ${url}`, { status: 404 })
+})
 
-    getCopilotUsage = () =>
-      Promise.resolve({ seat_breakdown: {}, total_suggestions_count: 0 })
-  },
-}))
+globalThis.fetch = fetchMock as unknown as typeof fetch
 
 const { PATHS, ensurePaths } = await import('../src/lib/paths')
 const { setupGitHubToken } = await import('../src/lib/token')
@@ -55,6 +70,8 @@ const { authStore, modelCache } = await import('../src/state')
 const { readConfig } = await import('../src/lib/config')
 
 function resetStores() {
+  process.env.GHC_PROXY_APP_DIR = tempDir
+  globalThis.fetch = fetchMock as unknown as typeof fetch
   authStore.githubToken = undefined
   authStore.copilotToken = undefined
   authStore.copilotApiBase = undefined
@@ -70,17 +87,25 @@ function resetStores() {
   modelCache.clearVSCodeVersion()
 }
 
+afterAll(async () => {
+  globalThis.fetch = originalFetch
+  if (originalGhcProxyAppDir === undefined) {
+    delete process.env.GHC_PROXY_APP_DIR
+  }
+  else {
+    process.env.GHC_PROXY_APP_DIR = originalGhcProxyAppDir
+  }
+  await fs.rm(tempDir, { recursive: true, force: true })
+})
+
 describe('Token file removal (RED phase)', () => {
   beforeEach(async () => {
     await fs.rm(tempDir, { recursive: true, force: true })
     await fs.mkdir(tempDir, { recursive: true })
 
     resetStores()
+    fetchMock.mockClear()
     mockPollAccessToken.mockClear()
-  })
-
-  afterAll(async () => {
-    await fs.rm(tempDir, { recursive: true, force: true })
   })
 
   test('ensurePaths() should NOT create the old token file', async () => {
@@ -123,6 +148,7 @@ describe('GHE domain-switch re-auth', () => {
     await fs.mkdir(tempDir, { recursive: true })
 
     resetStores()
+    fetchMock.mockClear()
     mockPollAccessToken.mockClear()
   })
 

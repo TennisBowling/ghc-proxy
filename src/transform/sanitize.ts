@@ -27,6 +27,7 @@ export function filterThinkingBlocksForNativeMessages(
 }
 
 const OUTPUT_CONFIG_EFFORTS = ['low', 'medium', 'high', 'max', 'xhigh'] as const
+const CLAUDE_OPUS_47_RE = /claude.*opus.*4[.-]7/
 type OutputConfigEffort = typeof OUTPUT_CONFIG_EFFORTS[number]
 
 const OUTPUT_CONFIG_EFFORT_RANK = new Map<OutputConfigEffort, number>(
@@ -56,6 +57,35 @@ export function normalizeOutputConfigEffort(
     const currentRank = OUTPUT_CONFIG_EFFORT_RANK.get(current) ?? -1
     return currentRank > highestRank ? current : highest
   })
+}
+
+function isClaude47Model(model: Model | undefined): boolean {
+  const id = model?.id.toLowerCase() ?? ''
+  const family = model?.capabilities.family.toLowerCase() ?? ''
+  return CLAUDE_OPUS_47_RE.test(id) || CLAUDE_OPUS_47_RE.test(family)
+}
+
+export function sanitizeAdaptiveThinking(
+  payload: AnthropicMessagesPayload,
+  model: Model | undefined,
+): void {
+  if (!isClaude47Model(model) || payload.thinking?.type !== 'enabled') {
+    return
+  }
+
+  payload.thinking = { type: 'adaptive' }
+  if (payload.output_config?.effort != null) {
+    return
+  }
+
+  const effort = normalizeOutputConfigEffort('xhigh', model)
+  if (!effort) {
+    return
+  }
+  payload.output_config = {
+    ...(payload.output_config ?? {}),
+    effort,
+  }
 }
 
 export function sanitizeOutputConfig(

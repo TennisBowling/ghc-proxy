@@ -135,8 +135,10 @@ function serializeAssistantTurn(turn: ConversationTurn): Array<CapiMessage> {
     role: 'assistant',
     content: serializeContentBlocks(textBlocks),
     ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+    ...(turn.meta?.reasoningText !== undefined ? { reasoning_text: turn.meta.reasoningText } : {}),
     ...(turn.meta?.reasoningOpaque ? { reasoning_opaque: turn.meta.reasoningOpaque } : {}),
     ...(turn.meta?.encryptedContent !== undefined ? { encrypted_content: turn.meta.encryptedContent } : {}),
+    ...(turn.meta?.reasoningDetails ? { reasoning_details: turn.meta.reasoningDetails } : {}),
     ...(turn.meta?.phase ? { phase: turn.meta.phase } : {}),
     ...(turn.meta?.copilotAnnotations !== undefined ? { copilot_annotations: turn.meta.copilotAnnotations } : {}),
   }]
@@ -235,6 +237,9 @@ function serializeCompletionOptions(
     ...(opts.logprobs != null ? { logprobs: opts.logprobs } : {}),
     ...(opts.responseFormat != null ? { response_format: opts.responseFormat } : {}),
     ...(opts.seed != null ? { seed: opts.seed } : {}),
+    ...(opts.topLogprobs != null ? { top_logprobs: opts.topLogprobs } : {}),
+    ...(opts.parallelToolCalls != null ? { parallel_tool_calls: opts.parallelToolCalls } : {}),
+    ...(opts.verbosity != null ? { output_config: { effort: opts.verbosity } } : {}),
     ...(opts.reasoningEffort != null ? { reasoning_effort: opts.reasoningEffort } : {}),
   }
 }

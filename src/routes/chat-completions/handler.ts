@@ -7,6 +7,7 @@ import { getTokenCount } from '~/lib/tokenizer'
 import { runPipeline } from '~/pipeline/runner'
 import { chatCompletionsModelChain } from '~/transform'
 
+import { preprocessPdfFilePartsForChat } from './pdf-preprocessor'
 import { chatCompletionsStrategyRegistry } from './strategy-registry'
 
 export interface CompletionCoreParams {
@@ -30,6 +31,8 @@ export async function handleCompletionCore(
         consola.debug('Request payload:', JSON.stringify(payload).slice(-400))
       },
       async afterTransform({ payload, selectedModel }) {
+        await preprocessPdfFilePartsForChat(payload, selectedModel)
+
         try {
           if (selectedModel) {
             const tokenCount = await getTokenCount(payload, selectedModel)
@@ -43,18 +46,23 @@ export async function handleCompletionCore(
           consola.warn('Failed to calculate token count:', error)
         }
 
+        if (payload.max_tokens == null && payload.max_completion_tokens != null) {
+          payload.max_tokens = payload.max_completion_tokens
+        }
+
         if (payload.max_tokens == null) {
           payload.max_tokens = selectedModel?.capabilities.limits.max_output_tokens
           consola.debug('Set max_tokens to:', JSON.stringify(payload.max_tokens))
         }
       },
-      buildStrategyContext({ payload, meta, copilotClient, upstreamSignal, modelMapping }) {
+      buildStrategyContext({ payload, meta, copilotClient, upstreamSignal, modelMapping, selectedModel }) {
         return {
           copilotClient,
           payload,
           upstreamSignal,
           requestContext: meta.requestContext ?? {},
           modelMapping,
+          selectedModel,
         }
       },
     },

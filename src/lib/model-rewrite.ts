@@ -11,6 +11,10 @@ export interface ModelRewriteResult {
   reason?: 'AUTO_CORRECT' | 'CONFIG_REWRITE'
 }
 
+const TEMPORARY_MODEL_ALIASES: Record<string, string> = {
+  'claude-opus-4.7': 'claude-opus-4.7-1m-internal',
+}
+
 // ── Pre-request rewriting ──
 
 /**
@@ -29,13 +33,25 @@ export function rewriteModel(modelId: string): ModelRewriteResult {
     }
   }
 
-  // 2. Built-in normalization (dash/dot equivalence)
+  // 2. Temporary built-in aliases.
+  const aliased = TEMPORARY_MODEL_ALIASES[modelId]
+  if (aliased) {
+    const normalizedAlias = normalizeToKnownModel(aliased)
+    if (normalizedAlias) {
+      return { originalModel: modelId, model: normalizedAlias, reason: 'AUTO_CORRECT' }
+    }
+    if (!modelCache.getModels()) {
+      return { originalModel: modelId, model: aliased, reason: 'AUTO_CORRECT' }
+    }
+  }
+
+  // 3. Built-in normalization (dash/dot equivalence)
   const normalized = normalizeToKnownModel(modelId)
   if (normalized && normalized !== modelId) {
     return { originalModel: modelId, model: normalized, reason: 'AUTO_CORRECT' }
   }
 
-  // 3. Pass-through
+  // 4. Pass-through
   return { originalModel: modelId, model: modelId }
 }
 

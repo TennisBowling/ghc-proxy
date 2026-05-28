@@ -13,7 +13,7 @@ import { withTranslationErrors } from '~/lib/error'
 import { runStrategy } from '~/lib/execution-strategy'
 import { appendModelStepInPlace } from '~/lib/request-logger'
 import { configStore, MESSAGES_ENDPOINT, modelCache, RESPONSES_ENDPOINT } from '~/state'
-import { filterThinkingBlocksForNativeMessages, sanitizeCacheControl, sanitizeOutputConfig } from '~/transform/sanitize'
+import { filterThinkingBlocksForNativeMessages, sanitizeAdaptiveThinking, sanitizeCacheControl, sanitizeOutputConfig } from '~/transform/sanitize'
 import { translateAnthropicToResponsesPayload } from '~/translator/responses/anthropic-to-responses'
 
 import { applyContextManagement, compactInputByLatestCompaction, getResponsesRequestOptions } from '../responses/context-management'
@@ -38,6 +38,7 @@ const nativeMessagesEntry: StrategyEntry<StrategyContext> = {
   canHandle: model => modelCache.supportsEndpoint(model, MESSAGES_ENDPOINT),
   async execute(ctx) {
     filterThinkingBlocksForNativeMessages(ctx.anthropicPayload)
+    sanitizeAdaptiveThinking(ctx.anthropicPayload, ctx.selectedModel)
     sanitizeOutputConfig(ctx.anthropicPayload, ctx.selectedModel)
     sanitizeCacheControl(ctx.anthropicPayload)
 
